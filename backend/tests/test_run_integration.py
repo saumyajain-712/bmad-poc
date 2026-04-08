@@ -53,6 +53,7 @@ def test_run_initiation_end_to_end(monkeypatch, tmp_path):
             assert get_payload["api_specification"] == post_payload["api_specification"]
             assert get_payload["status"] == "initiated"
 
-    anyio.run(exercise_flow)
-
-    app.dependency_overrides.clear()
+    try:
+        anyio.run(exercise_flow)
+    finally:
+        app.dependency_overrides.clear()

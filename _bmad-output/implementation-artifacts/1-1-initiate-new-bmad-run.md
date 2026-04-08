@@ -117,8 +117,17 @@ Validation run summary:
 
 - 2026-04-01: Initial implementation of frontend and backend project structures, RunInitiationForm, bmadService, FastAPI endpoint for runs, and basic unit tests.
 - 2026-04-08: Added integration test for run initiation end-to-end API flow and orchestration trigger verification.
+- 2026-04-09: Code review patches — `finally` cleanup for FastAPI overrides in integration test, `.gitignore` cleanup, frontend test for `fetch` rejection, trailing newline on `App.test.tsx`.
 
 ## Story Status
 
-**Status:** review
-**Notes:** All listed tasks are now completed, including integration test coverage for end-to-end run initiation flow. Story is ready for code review.
+**Status:** done
+**Notes:** Code review complete; review patch items applied. Deferred item remains tracked for PRD-phase transition scope beyond this story’s implementation slice.
+
+### Review Findings
+
+- [x] [Review][Patch] Clear `app.dependency_overrides` in a `finally` block so a failing async test cannot leak overrides into later tests. [backend/tests/test_run_integration.py]
+- [x] [Review][Patch] Remove duplicate `__pycache__/` lines in `.gitignore` (keep one entry plus `.vite/` and other rules). [.gitignore]
+- [x] [Review][Patch] Add missing trailing newline at end of `frontend/tests/App.test.tsx`. [frontend/tests/App.test.tsx]
+- [x] [Review][Patch] Add a frontend test where `fetch` rejects (network failure) to match the form’s `try/catch` path. [frontend/tests/App.test.tsx]
+- [x] [Review][Defer] Story AC and PRD journey imply progression to PRD generation after initiation; this change set only covers run creation, orchestration hook, and proxy/test fixes — end-to-end phase transition remains placeholder. [1-1-initiate-new-bmad-run.md] — deferred, pre-existing

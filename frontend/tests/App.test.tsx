@@ -77,4 +77,19 @@ describe('App', () => {
       await screen.findByText(/Failed to initiate run\. Please try again\./i)
     ).toBeInTheDocument();
   });
+
+  it('shows error message when fetch rejects (network failure)', async () => {
+    vi.spyOn(global, 'fetch').mockRejectedValue(new Error('network error'));
+
+    render(<App />);
+    fireEvent.change(
+      screen.getByPlaceholderText(/Enter free-text API specification/i),
+      { target: { value: 'Create a todo API' } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Initiate BMAD Run/i }));
+
+    expect(
+      await screen.findByText(/Failed to initiate run\. Please try again\./i)
+    ).toBeInTheDocument();
+  });
 });
