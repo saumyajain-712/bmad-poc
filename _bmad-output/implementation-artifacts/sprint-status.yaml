@@ -1,0 +1,93 @@
+# generated: 2026-04-01T12:51:26.000000Z
+# last_updated: 2026-04-01T12:51:26.000000Z
+# project: bmad-poc
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: {project-root}/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-04-01T12:51:26.000000Z
+last_updated: 2026-04-01T12:51:26.000000Z
+project: bmad-poc
+project_key: NOKEY
+tracking_system: file-system
+story_location: {project-root}/_bmad-output/implementation-artifacts
+
+development_status:
+  epic-1: in-progress
+  1-1-initiate-new-bmad-run: review
+  1-2-validate-input-completeness: backlog
+  1-3-request-input-clarifications: backlog
+  1-4-provide-clarification-responses: backlog
+  1-5-preserve-resolved-input-context: backlog
+  epic-1-retrospective: optional
+  epic-2: backlog
+  2-1-execute-bmad-phases-in-sequence: backlog
+  2-2-generate-phase-proposal-artifact: backlog
+  2-3-approve-phase-proposal: backlog
+  2-4-modify-and-regenerate-phase-proposal: backlog
+  2-5-block-phase-advancement: backlog
+  2-6-maintain-per-phase-status: backlog
+  2-7-resume-orchestration-from-current-state: backlog
+  epic-2-retrospective: optional
+  epic-3: backlog
+  3-1-view-agent-actions-timeline: backlog
+  3-2-display-tool-call-events: backlog
+  3-3-inspect-event-level-details: backlog
+  3-4-display-mock-web-search-results: backlog
+  3-5-present-phase-boundaries-and-transitions: backlog
+  3-6-identify-failure-context-from-ui: backlog
+  epic-3-retrospective: optional
+  epic-4: backlog
+  4-1-run-verification-checks: backlog
+  4-2-detect-uiapi-mismatches: backlog
+  4-3-propose-targeted-correction: backlog
+  4-4-apply-approved-corrections: backlog
+  4-5-prevent-final-progression-on-unresolved-verification: backlog
+  4-6-review-verification-outcomes-and-corrections: backlog
+  epic-4-retrospective: optional
+  epic-5: backlog
+  5-1-produce-working-todo-api-and-ui-output: backlog
+  5-2-generate-and-verify-required-api-endpoints: backlog
+  5-3-review-final-generated-output: backlog
+  5-4-present-run-complete-state: backlog
+  epic-5-retrospective: optional
+  epic-6: backlog
+  6-1-reset-run-environment: backlog
+  6-2-clear-run-artifacts-and-state: backlog
+  6-3-return-to-input-ready-state: backlog
+  6-4-execute-repeated-runs: backlog
+  6-5-keep-each-run-isolated: backlog
+  6-6-access-failure-context-for-troubleshooting: backlog
+  6-7-execute-without-real-external-network-calls: backlog
+  6-8-provide-deterministic-run-behavior: backlog
+  6-9-run-smoke-check-style-validation: backlog
+  epic-6-retrospective: optional
