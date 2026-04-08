@@ -2,21 +2,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from fastapi import Depends
-
 from backend.main import app
-from backend.sql_app.database import Base, SessionLocal
-from backend.sql_app.models import Run
-
-
-
-# Dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+from backend.sql_app.database import Base
+from backend.api.v1.endpoints.runs import get_db
 
 # Setup test database
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
@@ -38,7 +26,7 @@ def override_get_db():
         db.close()
 
 
-app.dependency_overrides[Depends(get_db)] = override_get_db
+app.dependency_overrides[get_db] = override_get_db
 
 client = TestClient(app)
 

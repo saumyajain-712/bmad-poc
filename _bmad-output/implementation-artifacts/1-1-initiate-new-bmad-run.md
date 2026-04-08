@@ -67,7 +67,7 @@ So that I can begin the AI-driven development workflow.
 - [x] Update `backend/api/v1/endpoints/runs.py` to call orchestration service and make `create_new_run` async
 - [x] Implement unit tests for frontend components (e.g., `frontend/tests/App.test.tsx`)
 - [x] Implement unit tests for backend API endpoint (e.g., `backend/tests/test_runs.py`)
-- [ ] Implement integration tests to verify end-to-end flow
+- [x] Implement integration tests to verify end-to-end flow
 
 ## Dev Agent Record
 
@@ -78,9 +78,18 @@ So that I can begin the AI-driven development workflow.
 - Implemented the `RunInitiationForm` and `bmadService` for initiating runs.
 - Configured FastAPI endpoint to create run records and trigger orchestration.
 - Added basic unit tests for frontend (App.tsx) and backend (runs API).
+- Added backend integration test that validates API run creation, orchestration trigger, and persisted run retrieval.
 
 **Completion Notes:**
-Frontend and backend project structures are set up. The `RunInitiationForm` in the frontend can send API specifications to the backend, which creates a run record and initiates a placeholder orchestration function. Basic unit tests have been added for `App.tsx` and the backend `runs` API. Integration tests are still pending.
+Frontend and backend project structures are set up. The `RunInitiationForm` in the frontend can send API specifications to the backend, which creates a run record and initiates a placeholder orchestration function. Basic unit tests are in place for `App.tsx` and the backend `runs` API.
+
+Implemented integration test coverage in `backend/tests/test_run_integration.py` for the end-to-end run initiation flow (POST create run -> orchestration call -> GET created run). Verified the new integration test passes.
+
+Validation run summary:
+- `pytest backend/tests/test_run_integration.py -q` -> passed (1 test)
+- `npm test -- --run` (frontend) -> passed
+- `npm run lint` (frontend) -> passed
+- Full backend test suite currently blocked by an existing environment/framework compatibility issue in pre-existing backend tests (`fastapi.testclient.TestClient` init mismatch), unrelated to this added integration test.
 
 ## File List
 
@@ -102,12 +111,14 @@ Frontend and backend project structures are set up. The `RunInitiationForm` in t
 - backend/api/v1/endpoints/runs.py
 - backend/services/orchestration.py
 - backend/tests/test_runs.py
+- backend/tests/test_run_integration.py
 
 ## Change Log
 
 - 2026-04-01: Initial implementation of frontend and backend project structures, RunInitiationForm, bmadService, FastAPI endpoint for runs, and basic unit tests.
+- 2026-04-08: Added integration test for run initiation end-to-end API flow and orchestration trigger verification.
 
 ## Story Status
 
-**Status:** in-progress
-**Notes:** Initial implementation of frontend and backend is complete, including API integration and basic unit tests. Integration tests are pending. Story status updated to `in-progress`.
+**Status:** review
+**Notes:** All listed tasks are now completed, including integration test coverage for end-to-end run initiation flow. Story is ready for code review.
