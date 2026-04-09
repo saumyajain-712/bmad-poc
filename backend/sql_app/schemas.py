@@ -28,3 +28,12 @@ class CompletenessValidationResult(BaseModel):
 class RunInitiationResponse(BaseModel):
     run: Run
     validation: CompletenessValidationResult
+
+
+class ClarificationAnswer(BaseModel):
+    question: str
+    answer: str
+
+
+class ClarificationResponseSubmission(BaseModel):
+    responses: list[ClarificationAnswer]

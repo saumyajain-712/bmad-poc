@@ -120,6 +120,105 @@ describe('App', () => {
     expect(items[1]).toHaveTextContent(
       /Which specific resources should this API manage \(for example users, products, orders, or todos\)\?/i
     );
+    expect(screen.getByRole('button', { name: /Submit Clarifications/i })).toBeInTheDocument();
+  });
+
+  it('submits clarification answers for the same run', async () => {
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          run: {
+            id: 90,
+            api_specification: 'Create API for data',
+            status: 'awaiting-clarification',
+            missing_items: ['supported operations'],
+            clarification_questions: [
+              'Which operations should the API support for each resource (for example create, read, update, delete, or list)?',
+            ],
+          },
+          validation: {
+            is_complete: false,
+            missing_items: ['supported operations'],
+            clarification_questions: [
+              'Which operations should the API support for each resource (for example create, read, update, delete, or list)?',
+            ],
+          },
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          run: {
+            id: 90,
+            api_specification: 'Create API for data with CRUD',
+            status: 'initiated',
+            missing_items: [],
+            clarification_questions: [],
+          },
+          validation: {
+            is_complete: true,
+            missing_items: [],
+            clarification_questions: [],
+          },
+        }),
+      } as Response);
+
+    render(<App />);
+    fireEvent.change(
+      screen.getByPlaceholderText(/Enter free-text API specification/i),
+      { target: { value: 'Create API for data' } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Initiate BMAD Run/i }));
+
+    const answerInput = await screen.findByPlaceholderText(/Provide clarification response/i);
+    fireEvent.change(answerInput, { target: { value: 'CRUD for users with required fields name and email' } });
+    fireEvent.click(screen.getByRole('button', { name: /Submit Clarifications/i }));
+
+    expect(
+      await screen.findByText(/Run resumed successfully! Run ID: 90, Status: initiated/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/Provide clarification response/i)).not.toBeInTheDocument();
+  });
+
+  it('requires all clarification answers before submission', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        run: {
+          id: 91,
+          api_specification: 'Create API for data',
+          status: 'awaiting-clarification',
+          missing_items: ['supported operations', 'target resources'],
+          clarification_questions: [
+            'Which operations should the API support for each resource (for example create, read, update, delete, or list)?',
+            'Which specific resources should this API manage (for example users, products, orders, or todos)?',
+          ],
+        },
+        validation: {
+          is_complete: false,
+          missing_items: ['supported operations', 'target resources'],
+          clarification_questions: [
+            'Which operations should the API support for each resource (for example create, read, update, delete, or list)?',
+            'Which specific resources should this API manage (for example users, products, orders, or todos)?',
+          ],
+        },
+      }),
+    } as Response);
+
+    render(<App />);
+    fireEvent.change(
+      screen.getByPlaceholderText(/Enter free-text API specification/i),
+      { target: { value: 'Create API for data' } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Initiate BMAD Run/i }));
+
+    await screen.findByText(/Input clarification required before continuation/i);
+    fireEvent.click(screen.getByRole('button', { name: /Submit Clarifications/i }));
+
+    expect(
+      await screen.findByText(/Please answer all clarification questions before continuing\./i)
+    ).toBeInTheDocument();
   });
 
   it('gracefully handles missing clarification question array', async () => {

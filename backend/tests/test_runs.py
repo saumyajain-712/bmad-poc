@@ -144,3 +144,78 @@ def test_read_nonexistent_run():
         anyio.run(exercise)
     finally:
         app.dependency_overrides.clear()
+
+
+def test_submit_clarifications_keeps_same_run_and_resumes(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API"},
+            )
+            assert create_response.status_code == 200
+            create_payload = create_response.json()
+            assert create_payload["run"]["status"] == "awaiting-clarification"
+            run_id = create_payload["run"]["id"]
+            questions = create_payload["run"]["clarification_questions"]
+            assert len(questions) > 0
+
+            clarification_response = await client.post(
+                f"/api/v1/runs/{run_id}/clarifications",
+                json={
+                    "responses": [
+                        {"question": question, "answer": "users with CRUD operations and required fields name and email"}
+                        for question in questions
+                    ]
+                },
+            )
+            assert clarification_response.status_code == 200
+            clarification_payload = clarification_response.json()
+            assert clarification_payload["run"]["id"] == run_id
+            assert clarification_payload["validation"]["is_complete"] is True
+            assert clarification_payload["run"]["status"] == "initiated"
+            mocked_orchestration.assert_awaited_once()
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_submit_partial_clarifications_keeps_run_paused(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API"},
+            )
+            assert create_response.status_code == 200
+            create_payload = create_response.json()
+            run_id = create_payload["run"]["id"]
+            first_question = create_payload["run"]["clarification_questions"][0]
+
+            clarification_response = await client.post(
+                f"/api/v1/runs/{run_id}/clarifications",
+                json={"responses": [{"question": first_question, "answer": "users"}]},
+            )
+            assert clarification_response.status_code == 200
+            clarification_payload = clarification_response.json()
+            assert clarification_payload["validation"]["is_complete"] is False
+            assert clarification_payload["run"]["status"] == "awaiting-clarification"
+            assert len(clarification_payload["validation"]["clarification_questions"]) > 0
+            mocked_orchestration.assert_not_awaited()
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()

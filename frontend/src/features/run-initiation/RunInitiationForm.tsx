@@ -1,13 +1,19 @@
 import React, { useState } from 'react';
-import { createRun } from '../../services/bmadService';
+import { createRun, submitRunClarifications } from '../../services/bmadService';
 
 const RunInitiationForm: React.FC = () => {
   const [apiSpec, setApiSpec] = useState<string>('');
   const [message, setMessage] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [clarificationQuestions, setClarificationQuestions] = useState<string[]>([]);
+  const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
   const [isAwaitingClarification, setIsAwaitingClarification] = useState<boolean>(false);
+  const [runId, setRunId] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  const normalizeQuestions = (questions: string[]): string[] => (
+    [...questions].sort((a, b) => a.localeCompare(b))
+  );
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -18,7 +24,9 @@ const RunInitiationForm: React.FC = () => {
     setMessage('');
     setError('');
     setClarificationQuestions([]);
+    setClarificationAnswers({});
     setIsAwaitingClarification(false);
+    setRunId(null);
 
     if (!apiSpec.trim()) {
       setError('API Specification cannot be empty.');
@@ -29,6 +37,7 @@ const RunInitiationForm: React.FC = () => {
       setIsSubmitting(true);
       const response = await createRun(apiSpec);
       const newRun = response.run;
+      setRunId(newRun.id);
       if (response.validation.is_complete) {
         setMessage(`Run initiated successfully! Run ID: ${newRun.id}, Status: ${newRun.status}`);
         setApiSpec('');
@@ -38,16 +47,85 @@ const RunInitiationForm: React.FC = () => {
       const clarificationQuestions = Array.isArray(response.validation.clarification_questions)
         ? response.validation.clarification_questions
         : [];
-      const orderedQuestions = [...clarificationQuestions].sort((a, b) =>
-        a.localeCompare(b)
-      );
+      const orderedQuestions = normalizeQuestions(clarificationQuestions);
       setMessage(
         `Input clarification required before continuation. Run ID: ${newRun.id}, Status: ${newRun.status}`
       );
       setClarificationQuestions(orderedQuestions);
+      setClarificationAnswers(
+        orderedQuestions.reduce<Record<string, string>>((acc, question) => {
+          acc[question] = '';
+          return acc;
+        }, {})
+      );
       setIsAwaitingClarification(true);
     } catch (err) {
       setError('Failed to initiate run. Please try again.');
+      console.error(err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleClarificationChange = (question: string, value: string) => {
+    setClarificationAnswers((previous) => ({
+      ...previous,
+      [question]: value,
+    }));
+  };
+
+  const handleClarificationSubmit = async () => {
+    if (isSubmitting || runId === null) {
+      return;
+    }
+
+    const hasEmptyAnswer = clarificationQuestions.some(
+      (question) => !(clarificationAnswers[question] || '').trim()
+    );
+    if (hasEmptyAnswer) {
+      setError('Please answer all clarification questions before continuing.');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setError('');
+      const response = await submitRunClarifications(
+        runId,
+        clarificationQuestions.map((question) => ({
+          question,
+          answer: clarificationAnswers[question] || '',
+        }))
+      );
+
+      const updatedRun = response.run;
+      if (response.validation.is_complete) {
+        setMessage(`Run resumed successfully! Run ID: ${updatedRun.id}, Status: ${updatedRun.status}`);
+        setClarificationQuestions([]);
+        setClarificationAnswers({});
+        setIsAwaitingClarification(false);
+        setRunId(updatedRun.id);
+        return;
+      }
+
+      const nextQuestions = normalizeQuestions(
+        Array.isArray(response.validation.clarification_questions)
+          ? response.validation.clarification_questions
+          : []
+      );
+      setMessage(
+        `Clarification responses saved. Additional input is still required. Run ID: ${updatedRun.id}, Status: ${updatedRun.status}`
+      );
+      setClarificationQuestions(nextQuestions);
+      setClarificationAnswers(
+        nextQuestions.reduce<Record<string, string>>((acc, question) => {
+          acc[question] = clarificationAnswers[question] || '';
+          return acc;
+        }, {})
+      );
+      setIsAwaitingClarification(true);
+    } catch (err) {
+      setError('Failed to submit clarification responses. Please try again.');
       console.error(err);
     } finally {
       setIsSubmitting(false);
@@ -91,11 +169,29 @@ const RunInitiationForm: React.FC = () => {
       {clarificationQuestions.length > 0 && (
         <div style={{ border: '1px solid #f0ad4e', borderRadius: '4px', padding: '10px', backgroundColor: '#fff8e1' }}>
           <p style={{ marginTop: 0 }}><strong>Clarification questions (in stable order):</strong></p>
-          <ul style={{ marginBottom: 0 }}>
+          <ul style={{ marginBottom: 10 }}>
             {clarificationQuestions.map((question, index) => (
-              <li key={`${question}-${index}`}>{question}</li>
+              <li key={`${question}-${index}`}>
+                <p style={{ marginTop: 0, marginBottom: 6 }}>{question}</p>
+                <input
+                  type="text"
+                  value={clarificationAnswers[question] || ''}
+                  onChange={(e) => handleClarificationChange(question, e.target.value)}
+                  placeholder="Provide clarification response"
+                  required
+                  style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px' }}
+                />
+              </li>
             ))}
           </ul>
+          <button
+            type="button"
+            onClick={handleClarificationSubmit}
+            disabled={isSubmitting || runId === null}
+            style={{ padding: '10px 15px', backgroundColor: '#8a6d3b', color: 'white', border: 'none', borderRadius: '4px', cursor: isSubmitting ? 'not-allowed' : 'pointer', opacity: isSubmitting ? 0.7 : 1 }}
+          >
+            Submit Clarifications
+          </button>
         </div>
       )}
       {error && <p style={{ color: 'red' }}>{error}</p>}

@@ -108,3 +108,27 @@ def validate_api_specification_completeness(api_specification: str) -> Completen
         missing_items=missing_items,
         clarification_questions=clarification_questions,
     )
+
+
+def merge_clarification_answers_into_specification(
+    api_specification: str,
+    clarification_answers: list[tuple[str, str]],
+) -> str:
+    normalized_base = api_specification.strip()
+    ordered_answers = sorted(
+        [
+            (question.strip(), answer.strip())
+            for question, answer in clarification_answers
+            if question.strip() and answer.strip()
+        ],
+        key=lambda item: item[0].lower(),
+    )
+
+    if not ordered_answers:
+        return normalized_base
+
+    clarification_lines = [f"{question} {answer}" for question, answer in ordered_answers]
+    clarification_block = " ".join(clarification_lines).strip()
+    if not normalized_base:
+        return clarification_block
+    return f"{normalized_base} {clarification_block}".strip()

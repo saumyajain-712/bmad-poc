@@ -17,6 +17,11 @@ export interface RunInitiationResponse {
     validation: CompletenessValidationResult;
 }
 
+export interface ClarificationAnswer {
+    question: string;
+    answer: string;
+}
+
 export async function createRun(api_specification: string): Promise<RunInitiationResponse> {
     const response = await fetch("/api/v1/runs/", {
         method: "POST",
@@ -24,6 +29,25 @@ export async function createRun(api_specification: string): Promise<RunInitiatio
             "Content-Type": "application/json",
         },
         body: JSON.stringify({ api_specification }),
+    });
+
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return response.json() as Promise<RunInitiationResponse>;
+}
+
+export async function submitRunClarifications(
+    runId: number,
+    responses: ClarificationAnswer[]
+): Promise<RunInitiationResponse> {
+    const response = await fetch(`/api/v1/runs/${runId}/clarifications`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ responses }),
     });
 
     if (!response.ok) {

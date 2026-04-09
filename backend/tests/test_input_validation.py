@@ -1,4 +1,7 @@
-from backend.services.input_validation import validate_api_specification_completeness
+from backend.services.input_validation import (
+    merge_clarification_answers_into_specification,
+    validate_api_specification_completeness,
+)
 
 
 def test_validator_accepts_meaningful_api_specification():
@@ -101,4 +104,20 @@ def test_validator_flags_ambiguous_terms_even_with_resource_and_operation_signal
     assert (
         "Please replace ambiguous terms with precise resource names and expected operations."
         in result.clarification_questions
+    )
+
+
+def test_merge_clarification_answers_is_deterministic():
+    merged = merge_clarification_answers_into_specification(
+        "Create users API",
+        [
+            ("Which operations should the API support?", "Create, read, update, delete"),
+            ("Which specific resources should this API manage?", "Users and sessions"),
+        ],
+    )
+
+    assert merged == (
+        "Create users API "
+        "Which operations should the API support? Create, read, update, delete "
+        "Which specific resources should this API manage? Users and sessions"
     )
