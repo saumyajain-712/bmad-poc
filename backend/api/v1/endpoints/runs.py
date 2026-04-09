@@ -23,6 +23,10 @@ def get_db():
         db.close()
 
 
+def _normalize_question_key(question: str) -> str:
+    return " ".join(question.strip().split()).lower()
+
+
 @router.post("/runs/", response_model=schemas.RunInitiationResponse)
 async def create_new_run(run: schemas.RunCreate, db: Session = Depends(get_db)):
     validation_result = validate_api_specification_completeness(run.api_specification)
@@ -70,17 +74,24 @@ async def submit_run_clarifications(
     db_run = crud.get_run(db, run_id=run_id)
     if db_run is None:
         raise HTTPException(status_code=404, detail="Run not found")
-    if db_run.status != "awaiting-clarification":
+    if db_run.status not in {"awaiting-clarification", "initiation-failed"}:
         raise HTTPException(
             status_code=400,
-            detail="Clarification responses can only be submitted for runs awaiting clarification.",
+            detail="Clarification responses can only be submitted for runs awaiting clarification or retry.",
         )
 
-    response_map = {
-        answer.question.strip(): answer.answer.strip()
-        for answer in payload.responses
-        if answer.question.strip()
-    }
+    response_map: dict[str, str] = {}
+    for answer in payload.responses:
+        normalized_key = _normalize_question_key(answer.question)
+        if not normalized_key:
+            continue
+        if normalized_key in response_map:
+            raise HTTPException(
+                status_code=400,
+                detail="Duplicate clarification question entries are not allowed.",
+            )
+        response_map[normalized_key] = answer.answer.strip()
+
     pending_questions = list(db_run.clarification_questions or [])
     if not pending_questions:
         raise HTTPException(
@@ -88,20 +99,27 @@ async def submit_run_clarifications(
             detail="Run does not contain clarification questions to answer.",
         )
 
-    missing_answers = [question for question in pending_questions if not response_map.get(question, "").strip()]
-    if missing_answers:
-        return {
-            "run": db_run,
-            "validation": schemas.CompletenessValidationResult(
-                is_complete=False,
-                missing_items=list(db_run.missing_items or []),
-                clarification_questions=pending_questions,
-            ),
-        }
+    pending_question_map = {
+        _normalize_question_key(question): question for question in pending_questions
+    }
+    unknown_questions = sorted(
+        set(response_map.keys()).difference(set(pending_question_map.keys()))
+    )
+    if unknown_questions:
+        raise HTTPException(
+            status_code=400,
+            detail="Clarification response contains unknown question entries.",
+        )
+
+    answered_pairs = [
+        (pending_question_map[key], response_map[key])
+        for key in pending_question_map
+        if response_map.get(key, "").strip()
+    ]
 
     merged_specification = merge_clarification_answers_into_specification(
         db_run.api_specification,
-        [(question, response_map[question]) for question in pending_questions],
+        answered_pairs,
     )
     validation_result = validate_api_specification_completeness(merged_specification)
     next_status = "initiated" if validation_result.is_complete else "awaiting-clarification"
@@ -115,21 +133,26 @@ async def submit_run_clarifications(
         clarification_questions=validation_result.clarification_questions,
     )
 
-    if validation_result.is_complete:
-        try:
-            await orchestration.initiate_bmad_run(updated_run.api_specification)
-        except Exception as exc:
-            updated_run = crud.update_run_after_clarification(
-                db=db,
-                db_run=updated_run,
-                api_specification=merged_specification,
-                status="initiation-failed",
-                missing_items=[],
-                clarification_questions=[],
-            )
-            raise HTTPException(
-                status_code=502,
-                detail="Run clarification was accepted but orchestration failed to resume.",
-            ) from exc
+    if not validation_result.is_complete:
+        return {
+            "run": updated_run,
+            "validation": validation_result,
+        }
+
+    try:
+        await orchestration.initiate_bmad_run(updated_run.api_specification)
+    except Exception as exc:
+        updated_run = crud.update_run_after_clarification(
+            db=db,
+            db_run=updated_run,
+            api_specification=merged_specification,
+            status="awaiting-clarification",
+            missing_items=list(db_run.missing_items or validation_result.missing_items),
+            clarification_questions=pending_questions,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Run clarification was accepted but orchestration failed to resume.",
+        ) from exc
 
     return {"run": updated_run, "validation": validation_result}

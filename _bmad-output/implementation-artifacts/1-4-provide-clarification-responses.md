@@ -1,6 +1,6 @@
 # Story 1.4: Provide Clarification Responses
 
-Status: review
+Status: done
 
 ## Story
 
@@ -35,6 +35,15 @@ so that I can refine the input and allow the workflow to proceed.
   - [x] Backend unit/API tests for response merge + re-validation + status transitions.
   - [x] Frontend tests for clarification answer input, submission behavior, and pause/resume UI states.
   - [x] Regression tests to preserve Story 1.3 behavior where unresolved clarification keeps workflow paused.
+
+### Review Findings
+
+- [x] [Review][Patch] Clarification retries can become blocked after transient orchestration failure [backend/api/v1/endpoints/runs.py:239]
+- [x] [Review][Patch] Partial clarification submissions are not persisted or re-validated [backend/api/v1/endpoints/runs.py:257]
+- [x] [Review][Patch] Question-to-answer matching is brittle due exact string keys [backend/api/v1/endpoints/runs.py:245]
+- [x] [Review][Patch] Duplicate clarification question entries are silently overwritten [backend/api/v1/endpoints/runs.py:245]
+- [x] [Review][Patch] Missing backend coverage for orchestration-failure and wrong-status clarification paths [backend/tests/test_runs.py:531]
+- [x] [Review][Patch] Generated runtime artifacts were committed with story changes [backend/api/v1/endpoints/__pycache__/runs.cpython-311.pyc:1]
 
 ## Dev Notes
 
@@ -172,5 +181,5 @@ gpt-5.3-codex-low
 
 ## Story Status
 
-**Status:** review  
+**Status:** done  
 **Notes:** Clarification response flow implemented and validated; ready for code review.
