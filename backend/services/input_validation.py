@@ -30,7 +30,7 @@ def validate_api_specification_completeness(api_specification: str) -> Completen
 
     has_api_scope_signal = bool(
         re.search(
-            r"\b(api|endpoint|resource|crud|create|read|update|delete|service)\b",
+            r"\b(api|endpoints?|resources?|crud|create|read|update|delete|services?|operations?)\b",
             normalized_spec.lower(),
         )
     )

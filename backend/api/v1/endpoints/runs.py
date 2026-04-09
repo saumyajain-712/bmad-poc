@@ -27,7 +27,17 @@ async def create_new_run(run: schemas.RunCreate, db: Session = Depends(get_db)):
     if validation_result.is_complete:
         db_run = crud.create_run(db=db, run=run, status="initiated")
         # Trigger orchestration only when the specification is complete.
-        await orchestration.initiate_bmad_run(db_run.api_specification)
+        try:
+            await orchestration.initiate_bmad_run(db_run.api_specification)
+        except Exception as exc:
+            db_run.status = "initiation-failed"
+            db.add(db_run)
+            db.commit()
+            db.refresh(db_run)
+            raise HTTPException(
+                status_code=502,
+                detail="Run was created but orchestration failed to start.",
+            ) from exc
     else:
         db_run = crud.create_run(
             db=db,

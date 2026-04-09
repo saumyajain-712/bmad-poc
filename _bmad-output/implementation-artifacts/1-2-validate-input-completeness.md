@@ -1,6 +1,6 @@
 # Story 1.2: Validate Input Completeness
 
-Status: review
+Status: done
 
 ## Story
 
@@ -41,6 +41,14 @@ so that I can ensure a robust and reliable workflow.
   - [x] Backend API tests for complete vs incomplete submission behavior.
   - [x] Frontend tests for incomplete response rendering and complete response success path.
   - [x] Keep existing passing tests intact; avoid broad rewrites.
+
+### Review Findings
+
+- [x] [Review][Patch] Inconsistent run state if orchestration fails after DB commit [backend/api/v1/endpoints/runs.py]
+- [x] [Review][Patch] Validation keyword matching misses common plural API terms (for example `endpoints`, `resources`, `services`) [backend/services/input_validation.py]
+- [x] [Review][Patch] Run initiation form allows duplicate concurrent submissions and stale response overwrite [frontend/src/features/run-initiation/RunInitiationForm.tsx]
+- [x] [Review][Patch] Add `GET /api/v1/runs/{id}` regression assertion for clarification arrays on incomplete runs [backend/tests/test_runs.py]
+- [x] [Review][Patch] Commit includes generated artifacts (`__pycache__`, `.vite` test cache, and local `.db` files) that should be excluded from source control [backend/api/v1/endpoints/__pycache__/runs.cpython-311.pyc]
 
 ## Dev Notes
 
@@ -176,5 +184,5 @@ gpt-5.3-codex-low
 
 ## Story Status
 
-**Status:** review
+**Status:** done
 **Notes:** All story tasks completed, tests passing for complete/incomplete initiation paths, and story is ready for code review.

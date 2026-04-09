@@ -6,9 +6,14 @@ const RunInitiationForm: React.FC = () => {
   const [message, setMessage] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [clarificationQuestions, setClarificationQuestions] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (isSubmitting) {
+      return;
+    }
+
     setMessage('');
     setError('');
     setClarificationQuestions([]);
@@ -19,6 +24,7 @@ const RunInitiationForm: React.FC = () => {
     }
 
     try {
+      setIsSubmitting(true);
       const response = await createRun(apiSpec);
       const newRun = response.run;
       if (response.validation.is_complete) {
@@ -32,6 +38,8 @@ const RunInitiationForm: React.FC = () => {
     } catch (err) {
       setError('Failed to initiate run. Please try again.');
       console.error(err);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -45,7 +53,11 @@ const RunInitiationForm: React.FC = () => {
         rows={10}
         style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px' }}
       ></textarea>
-      <button type="submit" style={{ padding: '10px 15px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+      <button
+        type="submit"
+        disabled={isSubmitting}
+        style={{ padding: '10px 15px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: isSubmitting ? 'not-allowed' : 'pointer', opacity: isSubmitting ? 0.7 : 1 }}
+      >
         Initiate BMAD Run
       </button>
       {message && <p style={{ color: 'green' }}>{message}</p>}
@@ -53,8 +65,8 @@ const RunInitiationForm: React.FC = () => {
         <div style={{ border: '1px solid #f0ad4e', borderRadius: '4px', padding: '10px', backgroundColor: '#fff8e1' }}>
           <p style={{ marginTop: 0 }}><strong>Please clarify:</strong></p>
           <ul style={{ marginBottom: 0 }}>
-            {clarificationQuestions.map((question) => (
-              <li key={question}>{question}</li>
+            {clarificationQuestions.map((question, index) => (
+              <li key={`${question}-${index}`}>{question}</li>
             ))}
           </ul>
         </div>
