@@ -77,8 +77,10 @@ def test_read_run():
         app.dependency_overrides.clear()
 
 
-def test_create_run_with_incomplete_specification():
+def test_create_run_with_incomplete_specification(monkeypatch):
     app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
 
     async def exercise():
         transport = ASGITransport(app=app)
@@ -100,6 +102,7 @@ def test_create_run_with_incomplete_specification():
             assert read_data["status"] == "awaiting-clarification"
             assert len(read_data["missing_items"]) > 0
             assert len(read_data["clarification_questions"]) > 0
+            mocked_orchestration.assert_not_awaited()
 
     try:
         anyio.run(exercise)

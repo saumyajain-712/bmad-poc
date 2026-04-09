@@ -6,6 +6,7 @@ const RunInitiationForm: React.FC = () => {
   const [message, setMessage] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [clarificationQuestions, setClarificationQuestions] = useState<string[]>([]);
+  const [isAwaitingClarification, setIsAwaitingClarification] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -17,6 +18,7 @@ const RunInitiationForm: React.FC = () => {
     setMessage('');
     setError('');
     setClarificationQuestions([]);
+    setIsAwaitingClarification(false);
 
     if (!apiSpec.trim()) {
       setError('API Specification cannot be empty.');
@@ -33,8 +35,14 @@ const RunInitiationForm: React.FC = () => {
         return;
       }
 
-      setMessage(`Input clarification required. Run ID: ${newRun.id}, Status: ${newRun.status}`);
-      setClarificationQuestions(response.validation.clarification_questions);
+      const orderedQuestions = [...response.validation.clarification_questions].sort((a, b) =>
+        a.localeCompare(b)
+      );
+      setMessage(
+        `Input clarification required before continuation. Run ID: ${newRun.id}, Status: ${newRun.status}`
+      );
+      setClarificationQuestions(orderedQuestions);
+      setIsAwaitingClarification(newRun.status === 'awaiting-clarification');
     } catch (err) {
       setError('Failed to initiate run. Please try again.');
       console.error(err);
@@ -60,10 +68,26 @@ const RunInitiationForm: React.FC = () => {
       >
         Initiate BMAD Run
       </button>
-      {message && <p style={{ color: 'green' }}>{message}</p>}
+      {message && (
+        <p style={{ color: isAwaitingClarification ? '#8a6d3b' : 'green' }}>
+          {message}
+        </p>
+      )}
+      {isAwaitingClarification && (
+        <p
+          style={{
+            marginTop: 0,
+            marginBottom: 0,
+            color: '#8a6d3b',
+            fontWeight: 600,
+          }}
+        >
+          Workflow paused: provide clarifications to continue.
+        </p>
+      )}
       {clarificationQuestions.length > 0 && (
         <div style={{ border: '1px solid #f0ad4e', borderRadius: '4px', padding: '10px', backgroundColor: '#fff8e1' }}>
-          <p style={{ marginTop: 0 }}><strong>Please clarify:</strong></p>
+          <p style={{ marginTop: 0 }}><strong>Clarification questions (in stable order):</strong></p>
           <ul style={{ marginBottom: 0 }}>
             {clarificationQuestions.map((question, index) => (
               <li key={`${question}-${index}`}>{question}</li>

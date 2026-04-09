@@ -41,4 +41,42 @@ def test_validator_length_boundary_19_characters_is_incomplete():
 def test_validator_length_boundary_20_characters_is_complete():
     result = validate_api_specification_completeness("Build api endpointxx")
     assert len("Build api endpointxx") == 20
-    assert result.is_complete is True
+    assert result.is_complete is False
+    assert "supported operations" in result.missing_items
+    assert "target resources" in result.missing_items
+
+
+def test_validator_flags_missing_resources_and_operations():
+    result = validate_api_specification_completeness("Build an API for internal tools")
+
+    assert result.is_complete is False
+    assert "supported operations" in result.missing_items
+    assert "target resources" in result.missing_items
+    assert (
+        "Which operations should the API support for each resource (for example create, read, update, delete, or list)?"
+        in result.clarification_questions
+    )
+    assert (
+        "Which specific resources should this API manage (for example users, products, orders, or todos)?"
+        in result.clarification_questions
+    )
+
+
+def test_validator_flags_write_operations_without_required_fields():
+    result = validate_api_specification_completeness("Create and update users API")
+
+    assert result.is_complete is False
+    assert "required fields for write operations" in result.missing_items
+    assert (
+        "What required request fields should be provided for create or update operations?"
+        in result.clarification_questions
+    )
+
+
+def test_validator_generates_deterministic_question_order():
+    specification = "Create API for data"
+    first = validate_api_specification_completeness(specification)
+    second = validate_api_specification_completeness(specification)
+
+    assert first.missing_items == second.missing_items
+    assert first.clarification_questions == second.clarification_questions

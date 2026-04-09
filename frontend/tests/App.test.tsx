@@ -78,14 +78,16 @@ describe('App', () => {
           status: 'awaiting-clarification',
           missing_items: ['meaningful detail length'],
           clarification_questions: [
-            'Please add more detail about the API, including main resources and expected operations.',
+            'Which operations should the API support for each resource (for example create, read, update, delete, or list)?',
+            'Which specific resources should this API manage (for example users, products, orders, or todos)?',
           ],
         },
         validation: {
           is_complete: false,
-          missing_items: ['meaningful detail length'],
+          missing_items: ['supported operations', 'target resources'],
           clarification_questions: [
-            'Please add more detail about the API, including main resources and expected operations.',
+            'Which specific resources should this API manage (for example users, products, orders, or todos)?',
+            'Which operations should the API support for each resource (for example create, read, update, delete, or list)?',
           ],
         },
       }),
@@ -99,11 +101,25 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: /Initiate BMAD Run/i }));
 
     expect(
-      await screen.findByText(/Input clarification required\. Run ID: 77, Status: awaiting-clarification/i)
+      await screen.findByText(
+        /Input clarification required before continuation\. Run ID: 77, Status: awaiting-clarification/i
+      )
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Please add more detail about the API, including main resources and expected operations\./i)
+      screen.getByText(/Workflow paused: provide clarifications to continue\./i)
     ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Which operations should the API support for each resource \(for example create, read, update, delete, or list\)\?/i
+      )
+    ).toBeInTheDocument();
+    const items = screen.getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent(
+      /Which operations should the API support for each resource \(for example create, read, update, delete, or list\)\?/i
+    );
+    expect(items[1]).toHaveTextContent(
+      /Which specific resources should this API manage \(for example users, products, orders, or todos\)\?/i
+    );
   });
 
   it('shows error message when API call fails', async () => {
