@@ -1,6 +1,6 @@
 # Story 1.5: Preserve Resolved Input Context
 
-Status: review
+Status: done
 
 ## Story
 
@@ -40,6 +40,13 @@ so that consistency is maintained throughout the BMAD workflow.
   - [x] Backend integration tests for phase progression using resolved context across multiple phase boundaries.
   - [x] Frontend tests verifying context visibility and stable rendering for timeline/run detail views.
   - [x] Regression tests to preserve Story 1.4 clarification-resume behavior and Story 1.2 validation gating.
+
+### Review Findings
+
+- [x] [Review][Decision] Database schema migration strategy for new run context columns — dismissed for this story scope (fresh-database assumption accepted).
+- [x] [Review][Patch] Clarification submission accepts empty/no-op responses [backend/api/v1/endpoints/runs.py:114]
+- [x] [Review][Patch] Phase start allowed from failed run status [backend/api/v1/endpoints/runs.py:171]
+- [x] [Review][Patch] Phase identifier is unconstrained and persisted as trace event data [backend/api/v1/endpoints/runs.py:164]
 
 ## Dev Notes
 
@@ -148,5 +155,5 @@ gpt-5.3-codex-low
 
 ## Story Status
 
-**Status:** review  
+**Status:** done  
 **Notes:** Implementation complete. All story tasks are checked and backend/frontend tests pass for context preservation and propagation.

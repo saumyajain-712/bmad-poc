@@ -12,6 +12,7 @@ from backend.services import orchestration
 models.Base.metadata.create_all(bind=engine)
 
 router = APIRouter()
+ALLOWED_PHASES = {"prd", "architecture", "stories", "code"}
 
 
 # Dependency
@@ -116,6 +117,11 @@ async def submit_run_clarifications(
         for key in pending_question_map
         if response_map.get(key, "").strip()
     ]
+    if not answered_pairs:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one non-empty clarification response is required.",
+        )
 
     merged_specification = merge_clarification_answers_into_specification(
         db_run.api_specification,
@@ -168,6 +174,23 @@ def start_run_phase(
     if db_run is None:
         raise HTTPException(status_code=404, detail="Run not found")
 
+    normalized_phase = phase.strip().lower()
+    if normalized_phase not in ALLOWED_PHASES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Unsupported phase. Allowed phases are: "
+                + ", ".join(sorted(ALLOWED_PHASES))
+                + "."
+            ),
+        )
+
+    if db_run.status == "initiation-failed":
+        raise HTTPException(
+            status_code=400,
+            detail="Phase cannot start while run is in initiation-failed status.",
+        )
+
     resolved_context = (db_run.resolved_input_context or "").strip()
     if not resolved_context:
         raise HTTPException(
@@ -178,12 +201,12 @@ def start_run_phase(
     updated_run = crud.append_phase_context_event(
         db=db,
         db_run=db_run,
-        phase=phase,
+        phase=normalized_phase,
         context_source="resolved_input_context",
     )
     return {
         "run_id": updated_run.id,
-        "phase": phase,
+        "phase": normalized_phase,
         "status": "started",
         "context_source": "resolved_input_context",
         "context_version": updated_run.context_version,

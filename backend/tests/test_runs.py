@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 
 from backend.main import app
 from backend.api.v1.endpoints.runs import get_db
+from backend.sql_app import models
 from backend.sql_app.database import Base
 from backend.services import orchestration
 
@@ -234,6 +235,37 @@ def test_submit_partial_clarifications_keeps_run_paused(monkeypatch):
             mocked_orchestration.assert_not_awaited()
 
 
+def test_submit_clarifications_rejects_empty_effective_answers(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API"},
+            )
+            assert create_response.status_code == 200
+            payload = create_response.json()
+            run_id = payload["run"]["id"]
+            question = payload["run"]["clarification_questions"][0]
+
+            clarification_response = await client.post(
+                f"/api/v1/runs/{run_id}/clarifications",
+                json={"responses": [{"question": question, "answer": "   "}]},
+            )
+            assert clarification_response.status_code == 400
+            assert "non-empty clarification response is required" in clarification_response.json()["detail"].lower()
+            mocked_orchestration.assert_not_awaited()
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_start_phase_requires_resolved_context(monkeypatch):
     app.dependency_overrides[get_db] = override_get_db
     mocked_orchestration = AsyncMock()
@@ -252,6 +284,61 @@ def test_start_phase_requires_resolved_context(monkeypatch):
             )
             assert phase_response.status_code == 400
             assert "resolved input context is unavailable" in phase_response.json()["detail"].lower()
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_start_phase_rejects_unsupported_phase(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            phase_response = await client.post(f"/api/v1/runs/{run_id}/phases/design/start")
+            assert phase_response.status_code == 400
+            assert "unsupported phase" in phase_response.json()["detail"].lower()
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_start_phase_rejects_initiation_failed_status(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock(side_effect=RuntimeError("orchestration unavailable"))
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 502
+
+            db = TestingSessionLocal()
+            try:
+                run_id = db.query(models.Run.id).order_by(models.Run.id.desc()).first()[0]
+            finally:
+                db.close()
+
+            phase_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+            assert phase_response.status_code == 400
+            assert "initiation-failed status" in phase_response.json()["detail"].lower()
 
     try:
         anyio.run(exercise)
