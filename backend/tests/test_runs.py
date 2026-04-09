@@ -2,6 +2,7 @@ import anyio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 from unittest.mock import AsyncMock
 
 from backend.main import app
@@ -10,10 +11,12 @@ from backend.sql_app.database import Base
 from backend.services import orchestration
 
 # Setup test database
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
+SQLALCHEMY_DATABASE_URL = "sqlite://"
 
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -45,6 +48,9 @@ def test_create_run():
             assert data["validation"]["is_complete"] is True
             assert data["run"]["api_specification"] == "Create a user authentication API"
             assert data["run"]["status"] == "initiated"
+            assert data["run"]["original_input"] == "Create a user authentication API"
+            assert data["run"]["resolved_input_context"] == "Create a user authentication API"
+            assert data["run"]["context_version"] == 1
             assert "id" in data["run"]
 
     try:
@@ -70,6 +76,8 @@ def test_read_run():
             data = read_response.json()
             assert data["api_specification"] == "Another test spec"
             assert data["id"] == run_id
+            assert data["original_input"] == "Another test spec"
+            assert data["resolved_input_context"] is None
 
     try:
         anyio.run(exercise)
@@ -94,6 +102,9 @@ def test_create_run_with_incomplete_specification(monkeypatch):
             assert data["validation"]["is_complete"] is False
             assert data["run"]["status"] == "awaiting-clarification"
             assert len(data["validation"]["clarification_questions"]) > 0
+            assert data["run"]["original_input"] == "   "
+            assert data["run"]["resolved_input_context"] is None
+            assert data["run"]["context_version"] == 0
             run_id = data["run"]["id"]
 
             read_response = await client.get(f"/api/v1/runs/{run_id}")
@@ -102,6 +113,7 @@ def test_create_run_with_incomplete_specification(monkeypatch):
             assert read_data["status"] == "awaiting-clarification"
             assert len(read_data["missing_items"]) > 0
             assert len(read_data["clarification_questions"]) > 0
+            assert read_data["resolved_input_context"] is None
             mocked_orchestration.assert_not_awaited()
 
     try:
@@ -179,6 +191,9 @@ def test_submit_clarifications_keeps_same_run_and_resumes(monkeypatch):
             assert clarification_payload["run"]["id"] == run_id
             assert clarification_payload["validation"]["is_complete"] is True
             assert clarification_payload["run"]["status"] == "initiated"
+            assert clarification_payload["run"]["original_input"] == "Create users API"
+            assert clarification_payload["run"]["resolved_input_context"] is not None
+            assert clarification_payload["run"]["context_version"] == 1
             mocked_orchestration.assert_awaited_once()
 
     try:
@@ -214,13 +229,76 @@ def test_submit_partial_clarifications_keeps_run_paused(monkeypatch):
             assert clarification_payload["run"]["status"] == "awaiting-clarification"
             assert len(clarification_payload["validation"]["clarification_questions"]) > 0
             assert "users" in clarification_payload["run"]["api_specification"].lower()
+            assert clarification_payload["run"]["resolved_input_context"] is None
+            assert clarification_payload["run"]["context_version"] == 0
             mocked_orchestration.assert_not_awaited()
+
+
+def test_start_phase_requires_resolved_context(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "tiny"},
+            )
+            run_id = create_response.json()["run"]["id"]
+            phase_response = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/start",
+            )
+            assert phase_response.status_code == 400
+            assert "resolved input context is unavailable" in phase_response.json()["detail"].lower()
 
     try:
         anyio.run(exercise)
     finally:
         app.dependency_overrides.clear()
 
+
+def test_start_phase_uses_resolved_context(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API"},
+            )
+            payload = create_response.json()
+            run_id = payload["run"]["id"]
+            questions = payload["run"]["clarification_questions"]
+            await client.post(
+                f"/api/v1/runs/{run_id}/clarifications",
+                json={
+                    "responses": [
+                        {
+                            "question": question,
+                            "answer": "users with CRUD operations and required fields name and email",
+                        }
+                        for question in questions
+                    ]
+                },
+            )
+            run_after_clarification = await client.get(f"/api/v1/runs/{run_id}")
+            resolved_context = run_after_clarification.json()["resolved_input_context"]
+            phase_response = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/start",
+            )
+            assert phase_response.status_code == 200
+            assert phase_response.json()["context_source"] == "resolved_input_context"
+            assert phase_response.json()["context_used"] == resolved_context
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
 
 def test_submit_clarifications_rejects_non_clarification_status(monkeypatch):
     app.dependency_overrides[get_db] = override_get_db

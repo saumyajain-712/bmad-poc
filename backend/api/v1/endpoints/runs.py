@@ -35,7 +35,7 @@ async def create_new_run(run: schemas.RunCreate, db: Session = Depends(get_db)):
         db_run = crud.create_run(db=db, run=run, status="initiated")
         # Trigger orchestration only when the specification is complete.
         try:
-            await orchestration.initiate_bmad_run(db_run.api_specification)
+            await orchestration.initiate_bmad_run(db_run.resolved_input_context or "")
         except Exception as exc:
             db_run.status = "initiation-failed"
             db.add(db_run)
@@ -140,7 +140,7 @@ async def submit_run_clarifications(
         }
 
     try:
-        await orchestration.initiate_bmad_run(updated_run.api_specification)
+        await orchestration.initiate_bmad_run(updated_run.resolved_input_context or "")
     except Exception as exc:
         updated_run = crud.update_run_after_clarification(
             db=db,
@@ -156,3 +156,36 @@ async def submit_run_clarifications(
         ) from exc
 
     return {"run": updated_run, "validation": validation_result}
+
+
+@router.post("/runs/{run_id}/phases/{phase}/start", response_model=schemas.PhaseStartResponse)
+def start_run_phase(
+    run_id: int,
+    phase: str,
+    db: Session = Depends(get_db),
+):
+    db_run = crud.get_run(db, run_id=run_id)
+    if db_run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    resolved_context = (db_run.resolved_input_context or "").strip()
+    if not resolved_context:
+        raise HTTPException(
+            status_code=400,
+            detail="Phase cannot start because resolved input context is unavailable.",
+        )
+
+    updated_run = crud.append_phase_context_event(
+        db=db,
+        db_run=db_run,
+        phase=phase,
+        context_source="resolved_input_context",
+    )
+    return {
+        "run_id": updated_run.id,
+        "phase": phase,
+        "status": "started",
+        "context_source": "resolved_input_context",
+        "context_version": updated_run.context_version,
+        "context_used": resolved_context,
+    }

@@ -4,6 +4,15 @@ interface Run {
     status: string;
     missing_items: string[];
     clarification_questions: string[];
+    original_input: string;
+    resolved_input_context: string | null;
+    context_version: number;
+    context_events: Array<{
+        event_type: string;
+        phase: string;
+        context_source: string;
+        context_version: number;
+    }>;
 }
 
 interface CompletenessValidationResult {

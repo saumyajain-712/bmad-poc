@@ -14,6 +14,10 @@ class Run(RunBase):
     status: str
     missing_items: list[str] = []
     clarification_questions: list[str] = []
+    original_input: str
+    resolved_input_context: str | None = None
+    context_version: int = 0
+    context_events: list[dict] = []
 
     class Config:
         orm_mode = True
@@ -37,3 +41,12 @@ class ClarificationAnswer(BaseModel):
 
 class ClarificationResponseSubmission(BaseModel):
     responses: list[ClarificationAnswer]
+
+
+class PhaseStartResponse(BaseModel):
+    run_id: int
+    phase: str
+    status: str
+    context_source: str
+    context_version: int
+    context_used: str

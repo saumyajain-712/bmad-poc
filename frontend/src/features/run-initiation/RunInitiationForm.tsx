@@ -1,6 +1,22 @@
 import React, { useState } from 'react';
 import { createRun, submitRunClarifications } from '../../services/bmadService';
 
+interface RunContextEvent {
+  event_type: string;
+  phase: string;
+  context_source: string;
+  context_version: number;
+}
+
+interface RunSnapshot {
+  id: number;
+  status: string;
+  original_input: string;
+  resolved_input_context: string | null;
+  context_version: number;
+  context_events: RunContextEvent[];
+}
+
 const RunInitiationForm: React.FC = () => {
   const [apiSpec, setApiSpec] = useState<string>('');
   const [message, setMessage] = useState<string>('');
@@ -10,6 +26,7 @@ const RunInitiationForm: React.FC = () => {
   const [isAwaitingClarification, setIsAwaitingClarification] = useState<boolean>(false);
   const [runId, setRunId] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [latestRun, setLatestRun] = useState<RunSnapshot | null>(null);
 
   const normalizeQuestions = (questions: string[]): string[] => (
     [...questions].sort((a, b) => a.localeCompare(b))
@@ -27,6 +44,7 @@ const RunInitiationForm: React.FC = () => {
     setClarificationAnswers({});
     setIsAwaitingClarification(false);
     setRunId(null);
+    setLatestRun(null);
 
     if (!apiSpec.trim()) {
       setError('API Specification cannot be empty.');
@@ -38,6 +56,7 @@ const RunInitiationForm: React.FC = () => {
       const response = await createRun(apiSpec);
       const newRun = response.run;
       setRunId(newRun.id);
+      setLatestRun(newRun);
       if (response.validation.is_complete) {
         setMessage(`Run initiated successfully! Run ID: ${newRun.id}, Status: ${newRun.status}`);
         setApiSpec('');
@@ -99,6 +118,7 @@ const RunInitiationForm: React.FC = () => {
       );
 
       const updatedRun = response.run;
+      setLatestRun(updatedRun);
       if (response.validation.is_complete) {
         setMessage(`Run resumed successfully! Run ID: ${updatedRun.id}, Status: ${updatedRun.status}`);
         setClarificationQuestions([]);
@@ -195,6 +215,24 @@ const RunInitiationForm: React.FC = () => {
         </div>
       )}
       {error && <p style={{ color: 'red' }}>{error}</p>}
+      {latestRun && (
+        <section style={{ border: '1px solid #d9edf7', borderRadius: '4px', padding: '10px', backgroundColor: '#f4f9fd' }}>
+          <p style={{ marginTop: 0 }}><strong>Original input context</strong></p>
+          <p>{latestRun.original_input || '-'}</p>
+          <p><strong>Resolved input context</strong></p>
+          <p>{latestRun.resolved_input_context || 'Pending clarification.'}</p>
+          <p><strong>Context version: {latestRun.context_version}</strong></p>
+          {Array.isArray(latestRun.context_events) && latestRun.context_events.length > 0 && (
+            <ul style={{ marginBottom: 0 }}>
+              {latestRun.context_events.map((event, index) => (
+                <li key={`${event.event_type}-${event.phase}-${index}`}>
+                  {event.event_type} ({event.phase}) - source: {event.context_source}, version: {event.context_version}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
     </form>
   );
 };

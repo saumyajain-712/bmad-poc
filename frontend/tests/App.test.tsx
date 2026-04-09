@@ -42,6 +42,10 @@ describe('App', () => {
           status: 'initiated',
           missing_items: [],
           clarification_questions: [],
+          original_input: 'Create a todo API',
+          resolved_input_context: 'Create a todo API',
+          context_version: 1,
+          context_events: [],
         },
         validation: {
           is_complete: true,
@@ -81,6 +85,10 @@ describe('App', () => {
             'Which operations should the API support for each resource (for example create, read, update, delete, or list)?',
             'Which specific resources should this API manage (for example users, products, orders, or todos)?',
           ],
+          original_input: 'tiny',
+          resolved_input_context: null,
+          context_version: 0,
+          context_events: [],
         },
         validation: {
           is_complete: false,
@@ -136,6 +144,10 @@ describe('App', () => {
             clarification_questions: [
               'Which operations should the API support for each resource (for example create, read, update, delete, or list)?',
             ],
+            original_input: 'Create API for data',
+            resolved_input_context: null,
+            context_version: 0,
+            context_events: [],
           },
           validation: {
             is_complete: false,
@@ -155,6 +167,10 @@ describe('App', () => {
             status: 'initiated',
             missing_items: [],
             clarification_questions: [],
+            original_input: 'Create API for data',
+            resolved_input_context: 'Create API for data with CRUD',
+            context_version: 1,
+            context_events: [],
           },
           validation: {
             is_complete: true,
@@ -194,6 +210,10 @@ describe('App', () => {
             'Which operations should the API support for each resource (for example create, read, update, delete, or list)?',
             'Which specific resources should this API manage (for example users, products, orders, or todos)?',
           ],
+          original_input: 'Create API for data',
+          resolved_input_context: null,
+          context_version: 0,
+          context_events: [],
         },
         validation: {
           is_complete: false,
@@ -231,6 +251,10 @@ describe('App', () => {
           status: 'awaiting-clarification',
           missing_items: ['supported operations'],
           clarification_questions: [],
+          original_input: 'tiny',
+          resolved_input_context: null,
+          context_version: 0,
+          context_events: [],
         },
         validation: {
           is_complete: false,
@@ -266,6 +290,10 @@ describe('App', () => {
           status: 'initiated',
           missing_items: ['supported operations'],
           clarification_questions: [],
+          original_input: 'tiny',
+          resolved_input_context: null,
+          context_version: 0,
+          context_events: [],
         },
         validation: {
           is_complete: false,
@@ -324,5 +352,48 @@ describe('App', () => {
     expect(
       await screen.findByText(/Failed to initiate run\. Please try again\./i)
     ).toBeInTheDocument();
+  });
+
+  it('renders original and resolved context details for traceability', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        run: {
+          id: 120,
+          api_specification: 'Create users API with CRUD',
+          status: 'initiated',
+          missing_items: [],
+          clarification_questions: [],
+          original_input: 'Create users API',
+          resolved_input_context: 'Create users API with CRUD operations and required fields name and email',
+          context_version: 1,
+          context_events: [
+            {
+              event_type: 'context-resolved',
+              phase: 'input-validation',
+              context_source: 'resolved_input_context',
+              context_version: 1,
+            },
+          ],
+        },
+        validation: {
+          is_complete: true,
+          missing_items: [],
+          clarification_questions: [],
+        },
+      }),
+    } as Response);
+
+    render(<App />);
+    fireEvent.change(
+      screen.getByPlaceholderText(/Enter free-text API specification/i),
+      { target: { value: 'Create users API' } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Initiate BMAD Run/i }));
+
+    expect(await screen.findByText(/Original input context/i)).toBeInTheDocument();
+    expect(screen.getByText(/Resolved input context/i)).toBeInTheDocument();
+    expect(screen.getByText(/Context version: 1/i)).toBeInTheDocument();
+    expect(screen.getByText(/context-resolved/i)).toBeInTheDocument();
   });
 });
