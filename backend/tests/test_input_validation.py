@@ -3,7 +3,7 @@ from backend.services.input_validation import validate_api_specification_complet
 
 def test_validator_accepts_meaningful_api_specification():
     result = validate_api_specification_completeness(
-        "Create a products API with CRUD endpoints for catalog items."
+        "Build a products API with read and list endpoints for catalog items."
     )
     assert result.is_complete is True
     assert result.missing_items == []
@@ -80,3 +80,25 @@ def test_validator_generates_deterministic_question_order():
 
     assert first.missing_items == second.missing_items
     assert first.clarification_questions == second.clarification_questions
+
+
+def test_validator_requires_fields_even_with_crud_term():
+    result = validate_api_specification_completeness("Create users CRUD API for internal tools")
+
+    assert result.is_complete is False
+    assert "required fields for write operations" in result.missing_items
+    assert (
+        "What required request fields should be provided for create or update operations?"
+        in result.clarification_questions
+    )
+
+
+def test_validator_flags_ambiguous_terms_even_with_resource_and_operation_signals():
+    result = validate_api_specification_completeness("Create users API for data")
+
+    assert result.is_complete is False
+    assert "ambiguous terminology" in result.missing_items
+    assert (
+        "Please replace ambiguous terms with precise resource names and expected operations."
+        in result.clarification_questions
+    )

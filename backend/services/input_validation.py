@@ -82,14 +82,12 @@ def validate_api_specification_completeness(api_specification: str) -> Completen
             lowered_spec,
         )
     )
-    has_crud_signal = bool(re.search(r"\bcrud\b", lowered_spec))
     has_authentication_scope_signal = bool(
         re.search(r"\b(auth|authentication|login|signup|signin|token|oauth|password)\b", lowered_spec)
     )
     if (
         has_write_operation_signal
         and not has_required_field_detail
-        and not has_crud_signal
         and not has_authentication_scope_signal
     ):
         add_issue(
@@ -98,7 +96,7 @@ def validate_api_specification_completeness(api_specification: str) -> Completen
         )
 
     has_ambiguous_terms = bool(re.search(r"\b(stuff|things|data|info|details)\b", lowered_spec))
-    if has_ambiguous_terms and (not has_resource_signal or not has_operation_signal):
+    if has_ambiguous_terms:
         add_issue(
             "ambiguous terminology",
             "Please replace ambiguous terms with precise resource names and expected operations.",

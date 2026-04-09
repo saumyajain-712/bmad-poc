@@ -122,6 +122,77 @@ describe('App', () => {
     );
   });
 
+  it('gracefully handles missing clarification question array', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        run: {
+          id: 88,
+          api_specification: 'tiny',
+          status: 'awaiting-clarification',
+          missing_items: ['supported operations'],
+          clarification_questions: [],
+        },
+        validation: {
+          is_complete: false,
+          missing_items: ['supported operations'],
+          clarification_questions: null,
+        },
+      }),
+    } as Response);
+
+    render(<App />);
+    fireEvent.change(
+      screen.getByPlaceholderText(/Enter free-text API specification/i),
+      { target: { value: 'tiny' } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Initiate BMAD Run/i }));
+
+    expect(
+      await screen.findByText(
+        /Input clarification required before continuation\. Run ID: 88, Status: awaiting-clarification/i
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Workflow paused: provide clarifications to continue\./i)).toBeInTheDocument();
+    expect(screen.queryByRole('listitem')).not.toBeInTheDocument();
+  });
+
+  it('shows paused warning when validation is incomplete even with unexpected run status', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        run: {
+          id: 89,
+          api_specification: 'tiny',
+          status: 'initiated',
+          missing_items: ['supported operations'],
+          clarification_questions: [],
+        },
+        validation: {
+          is_complete: false,
+          missing_items: ['supported operations'],
+          clarification_questions: [
+            'Which operations should the API support for each resource (for example create, read, update, delete, or list)?',
+          ],
+        },
+      }),
+    } as Response);
+
+    render(<App />);
+    fireEvent.change(
+      screen.getByPlaceholderText(/Enter free-text API specification/i),
+      { target: { value: 'tiny' } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Initiate BMAD Run/i }));
+
+    expect(
+      await screen.findByText(
+        /Input clarification required before continuation\. Run ID: 89, Status: initiated/i
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Workflow paused: provide clarifications to continue\./i)).toBeInTheDocument();
+  });
+
   it('shows error message when API call fails', async () => {
     vi.spyOn(global, 'fetch').mockResolvedValue({
       ok: false,

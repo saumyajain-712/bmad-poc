@@ -1,6 +1,6 @@
 # Story 1.3: Request Input Clarifications
 
-Status: review
+Status: done
 
 ## Story
 
@@ -36,6 +36,15 @@ so that the developer can provide necessary details for accurate artifact genera
   - [x] Backend API tests verifying paused status and no orchestration progression on incomplete/ambiguous input.
   - [x] Frontend tests verifying targeted question rendering and paused-state UX messaging.
   - [x] Regression tests to keep Story 1.2 complete-input flow passing.
+
+### Review Findings
+
+- [x] [Review][Defer] Clarification heuristics may over-trigger for valid domain terms [backend/services/input_validation.py:54] — deferred by user: MVP scope - strict heuristics are sufficient for POC; broaden in a later story.
+- [x] [Review][Patch] Generated/cache artifacts were committed and should be removed from versioned source [backend/services/__pycache__/input_validation.cpython-311.pyc:1]
+- [x] [Review][Patch] Write-operation required-field clarification is skipped when auth/CRUD terms are present [backend/services/input_validation.py:89]
+- [x] [Review][Patch] Ambiguous terminology check is gated and can miss ambiguity when resource/operation signals are present [backend/services/input_validation.py:101]
+- [x] [Review][Patch] Frontend assumes clarification questions are always an array and can throw on malformed payloads [frontend/src/features/run-initiation/RunInitiationForm.tsx:38]
+- [x] [Review][Patch] Paused-state UI warning is tied only to status value, not incomplete-validation state [frontend/src/features/run-initiation/RunInitiationForm.tsx:45]
 
 ## Dev Notes
 
@@ -165,5 +174,5 @@ gpt-5.3-codex-low
 
 ## Story Status
 
-**Status:** review  
-**Notes:** Implementation complete. Clarification-question generation, pause-state enforcement, UI rendering, and regression tests are all validated and passing.
+**Status:** done  
+**Notes:** Code review completed; patch findings fixed, one heuristics-scope item deferred to a later story by product decision.

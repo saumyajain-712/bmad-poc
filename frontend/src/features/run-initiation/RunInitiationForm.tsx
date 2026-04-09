@@ -35,14 +35,17 @@ const RunInitiationForm: React.FC = () => {
         return;
       }
 
-      const orderedQuestions = [...response.validation.clarification_questions].sort((a, b) =>
+      const clarificationQuestions = Array.isArray(response.validation.clarification_questions)
+        ? response.validation.clarification_questions
+        : [];
+      const orderedQuestions = [...clarificationQuestions].sort((a, b) =>
         a.localeCompare(b)
       );
       setMessage(
         `Input clarification required before continuation. Run ID: ${newRun.id}, Status: ${newRun.status}`
       );
       setClarificationQuestions(orderedQuestions);
-      setIsAwaitingClarification(newRun.status === 'awaiting-clarification');
+      setIsAwaitingClarification(true);
     } catch (err) {
       setError('Failed to initiate run. Please try again.');
       console.error(err);
