@@ -5,11 +5,13 @@ const RunInitiationForm: React.FC = () => {
   const [apiSpec, setApiSpec] = useState<string>('');
   const [message, setMessage] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const [clarificationQuestions, setClarificationQuestions] = useState<string[]>([]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setMessage('');
     setError('');
+    setClarificationQuestions([]);
 
     if (!apiSpec.trim()) {
       setError('API Specification cannot be empty.');
@@ -17,9 +19,16 @@ const RunInitiationForm: React.FC = () => {
     }
 
     try {
-      const newRun = await createRun(apiSpec);
-      setMessage(`Run initiated successfully! Run ID: ${newRun.id}, Status: ${newRun.status}`);
-      setApiSpec('');
+      const response = await createRun(apiSpec);
+      const newRun = response.run;
+      if (response.validation.is_complete) {
+        setMessage(`Run initiated successfully! Run ID: ${newRun.id}, Status: ${newRun.status}`);
+        setApiSpec('');
+        return;
+      }
+
+      setMessage(`Input clarification required. Run ID: ${newRun.id}, Status: ${newRun.status}`);
+      setClarificationQuestions(response.validation.clarification_questions);
     } catch (err) {
       setError('Failed to initiate run. Please try again.');
       console.error(err);
@@ -40,6 +49,16 @@ const RunInitiationForm: React.FC = () => {
         Initiate BMAD Run
       </button>
       {message && <p style={{ color: 'green' }}>{message}</p>}
+      {clarificationQuestions.length > 0 && (
+        <div style={{ border: '1px solid #f0ad4e', borderRadius: '4px', padding: '10px', backgroundColor: '#fff8e1' }}>
+          <p style={{ marginTop: 0 }}><strong>Please clarify:</strong></p>
+          <ul style={{ marginBottom: 0 }}>
+            {clarificationQuestions.map((question) => (
+              <li key={question}>{question}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {error && <p style={{ color: 'red' }}>{error}</p>}
     </form>
   );

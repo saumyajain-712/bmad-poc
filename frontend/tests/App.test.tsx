@@ -36,9 +36,18 @@ describe('App', () => {
     vi.spyOn(global, 'fetch').mockResolvedValue({
       ok: true,
       json: async () => ({
-        id: 42,
-        api_specification: 'Create a todo API',
-        status: 'initiated',
+        run: {
+          id: 42,
+          api_specification: 'Create a todo API',
+          status: 'initiated',
+          missing_items: [],
+          clarification_questions: [],
+        },
+        validation: {
+          is_complete: true,
+          missing_items: [],
+          clarification_questions: [],
+        },
       }),
     } as Response);
 
@@ -57,6 +66,44 @@ describe('App', () => {
         screen.getByPlaceholderText(/Enter free-text API specification/i)
       ).toHaveValue('');
     });
+  });
+
+  it('shows clarification prompts when input is incomplete', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        run: {
+          id: 77,
+          api_specification: 'tiny',
+          status: 'awaiting-clarification',
+          missing_items: ['meaningful detail length'],
+          clarification_questions: [
+            'Please add more detail about the API, including main resources and expected operations.',
+          ],
+        },
+        validation: {
+          is_complete: false,
+          missing_items: ['meaningful detail length'],
+          clarification_questions: [
+            'Please add more detail about the API, including main resources and expected operations.',
+          ],
+        },
+      }),
+    } as Response);
+
+    render(<App />);
+    fireEvent.change(
+      screen.getByPlaceholderText(/Enter free-text API specification/i),
+      { target: { value: 'tiny' } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Initiate BMAD Run/i }));
+
+    expect(
+      await screen.findByText(/Input clarification required\. Run ID: 77, Status: awaiting-clarification/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Please add more detail about the API, including main resources and expected operations\./i)
+    ).toBeInTheDocument();
   });
 
   it('shows error message when API call fails', async () => {

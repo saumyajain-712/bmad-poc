@@ -12,6 +12,19 @@ class RunCreate(RunBase):
 class Run(RunBase):
     id: int
     status: str
+    missing_items: list[str] = []
+    clarification_questions: list[str] = []
 
     class Config:
         orm_mode = True
+
+
+class CompletenessValidationResult(BaseModel):
+    is_complete: bool
+    missing_items: list[str]
+    clarification_questions: list[str]
+
+
+class RunInitiationResponse(BaseModel):
+    run: Run
+    validation: CompletenessValidationResult

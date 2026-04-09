@@ -2,9 +2,22 @@ interface Run {
     id: number;
     api_specification: string;
     status: string;
+    missing_items: string[];
+    clarification_questions: string[];
 }
 
-export async function createRun(api_specification: string): Promise<Run> {
+interface CompletenessValidationResult {
+    is_complete: boolean;
+    missing_items: string[];
+    clarification_questions: string[];
+}
+
+export interface RunInitiationResponse {
+    run: Run;
+    validation: CompletenessValidationResult;
+}
+
+export async function createRun(api_specification: string): Promise<RunInitiationResponse> {
     const response = await fetch("/api/v1/runs/", {
         method: "POST",
         headers: {
@@ -17,5 +30,5 @@ export async function createRun(api_specification: string): Promise<Run> {
         throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    return response.json();
+    return response.json() as Promise<RunInitiationResponse>;
 }
