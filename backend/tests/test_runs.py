@@ -508,3 +508,73 @@ def test_submit_clarifications_failure_keeps_run_retryable(monkeypatch):
         anyio.run(exercise)
     finally:
         app.dependency_overrides.clear()
+
+
+def test_phase_advancement_enforces_canonical_sequence(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            for expected_phase in ["prd", "architecture", "stories", "code"]:
+                approve_response = await client.post(
+                    f"/api/v1/runs/{run_id}/phases/{expected_phase}/approve",
+                )
+                assert approve_response.status_code == 200
+
+                transition_response = await client.post(
+                    f"/api/v1/runs/{run_id}/phases/advance",
+                )
+                assert transition_response.status_code == 200
+                payload = transition_response.json()
+                assert payload["next_phase"] == expected_phase
+                assert payload["trigger"] == "approval"
+
+            final_run_response = await client.get(f"/api/v1/runs/{run_id}")
+            assert final_run_response.status_code == 200
+            final_run = final_run_response.json()
+            assert final_run["status"] == "phase-sequence-complete"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_phase_advancement_rejects_skips_and_non_approved_transition(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            run_id = create_response.json()["run"]["id"]
+
+            not_approved_transition = await client.post(f"/api/v1/runs/{run_id}/phases/advance")
+            assert not_approved_transition.status_code == 409
+            assert not_approved_transition.json()["detail"]["error_code"] == "phase_not_approved"
+
+            skip_attempt = await client.post(
+                f"/api/v1/runs/{run_id}/phases/stories/approve",
+            )
+            assert skip_attempt.status_code == 409
+            assert skip_attempt.json()["detail"]["error_code"] == "phase_skip_not_allowed"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()

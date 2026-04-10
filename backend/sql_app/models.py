@@ -15,5 +15,9 @@ class Run(Base):
     resolved_input_context = Column(String, nullable=True)
     context_version = Column(Integer, nullable=False, default=0)
     context_events = Column(JSON, nullable=False, default=list)
+    current_phase = Column(String, nullable=True)
+    current_phase_index = Column(Integer, nullable=False, default=-1)
+    phase_statuses = Column(JSON, nullable=False, default=dict)
+    pending_approved_phase = Column(String, nullable=True)
 
 

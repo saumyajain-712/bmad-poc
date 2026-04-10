@@ -18,6 +18,10 @@ class Run(RunBase):
     resolved_input_context: str | None = None
     context_version: int = 0
     context_events: list[dict] = []
+    current_phase: str | None = None
+    current_phase_index: int = -1
+    phase_statuses: dict[str, str] = {}
+    pending_approved_phase: str | None = None
 
     class Config:
         orm_mode = True
@@ -50,3 +54,17 @@ class PhaseStartResponse(BaseModel):
     context_source: str
     context_version: int
     context_used: str
+
+
+class PhaseApprovalResponse(BaseModel):
+    run_id: int
+    phase: str
+    status: str
+
+
+class PhaseAdvanceResponse(BaseModel):
+    run_id: int
+    previous_phase: str | None = None
+    next_phase: str
+    trigger: str
+    status: str

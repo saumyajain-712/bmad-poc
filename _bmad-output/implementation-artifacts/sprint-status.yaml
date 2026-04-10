@@ -1,5 +1,5 @@
-# generated: 2026-04-01T12:51:26.000000Z
-# last_updated: 2026-04-09T14:16:00.000000Z
+# generated: 2026-04-10T12:50:40.1627074+05:30
+# last_updated: 2026-04-10T12:50:40.1627074+05:30
 # project: bmad-poc
 # project_key: NOKEY
 # tracking_system: file-system
@@ -34,8 +34,8 @@
 # - SM typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
-generated: 2026-04-01T12:51:26.000000Z
-last_updated: 2026-04-09T19:50:00.000000Z
+generated: 2026-04-10T12:50:40.1627074+05:30
+last_updated: 2026-04-10T13:27:00+05:30
 project: bmad-poc
 project_key: NOKEY
 tracking_system: file-system
@@ -48,9 +48,9 @@ development_status:
   1-3-request-input-clarifications: done
   1-4-provide-clarification-responses: done
   1-5-preserve-resolved-input-context: done
-  epic-1-retrospective: optional
-  epic-2: backlog
-  2-1-execute-bmad-phases-in-sequence: backlog
+  epic-1-retrospective: done
+  epic-2: in-progress
+  2-1-execute-bmad-phases-in-sequence: review
   2-2-generate-phase-proposal-artifact: backlog
   2-3-approve-phase-proposal: backlog
   2-4-modify-and-regenerate-phase-proposal: backlog
@@ -68,7 +68,7 @@ development_status:
   epic-3-retrospective: optional
   epic-4: backlog
   4-1-run-verification-checks: backlog
-  4-2-detect-uiapi-mismatches: backlog
+  4-2-detect-ui-api-mismatches: backlog
   4-3-propose-targeted-correction: backlog
   4-4-apply-approved-corrections: backlog
   4-5-prevent-final-progression-on-unresolved-verification: backlog

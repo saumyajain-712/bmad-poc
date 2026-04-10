@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 
 from . import models, schemas
+from backend.services import orchestration
 
 
 def create_run(
@@ -42,6 +43,10 @@ def create_run(
         resolved_input_context=resolved_context,
         context_version=context_version,
         context_events=context_events,
+        current_phase=None,
+        current_phase_index=-1,
+        phase_statuses=orchestration.initialize_phase_statuses(),
+        pending_approved_phase=None,
     )
     db.add(db_run)
     db.commit()
@@ -114,6 +119,70 @@ def append_phase_context_event(
             "phase": phase,
             "context_source": context_source,
             "context_version": db_run.context_version,
+        }
+    )
+    db_run.context_events = events
+    db.add(db_run)
+    db.commit()
+    db.refresh(db_run)
+    return db_run
+
+
+def approve_phase_for_transition(
+    db: Session,
+    db_run: models.Run,
+    phase: str,
+):
+    phase_statuses = dict(db_run.phase_statuses or orchestration.initialize_phase_statuses())
+    phase_statuses[phase] = "approved"
+    db_run.phase_statuses = phase_statuses
+    db_run.pending_approved_phase = phase
+    events = list(db_run.context_events or [])
+    events.append(
+        {
+            "event_type": "phase-awaiting-transition",
+            "phase": phase,
+            "trigger": "approval",
+        }
+    )
+    db_run.context_events = events
+    db.add(db_run)
+    db.commit()
+    db.refresh(db_run)
+    return db_run
+
+
+def apply_phase_transition(
+    db: Session,
+    db_run: models.Run,
+    next_phase: str,
+    previous_phase: str | None,
+    timestamp: str,
+):
+    phase_statuses = dict(db_run.phase_statuses or orchestration.initialize_phase_statuses())
+    phase_statuses[next_phase] = "in-progress"
+    if previous_phase and previous_phase != next_phase:
+        phase_statuses[previous_phase] = "approved"
+    db_run.phase_statuses = phase_statuses
+    db_run.current_phase = next_phase
+    current_phase_index = (
+        db_run.current_phase_index if db_run.current_phase_index is not None else -1
+    )
+    db_run.current_phase_index = current_phase_index + 1
+    db_run.pending_approved_phase = None
+    db_run.status = (
+        "phase-sequence-complete"
+        if next_phase == orchestration.TERMINAL_PHASE
+        else "in-progress"
+    )
+    events = list(db_run.context_events or [])
+    events.append(
+        {
+            "event_type": "phase-transition",
+            "previous_phase": previous_phase,
+            "next_phase": next_phase,
+            "trigger": "approval",
+            "timestamp": timestamp,
         }
     )
     db_run.context_events = events

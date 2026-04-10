@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from datetime import datetime, timezone
 
 from backend.sql_app import crud, models, schemas
 from backend.sql_app.database import SessionLocal, engine
@@ -12,7 +13,7 @@ from backend.services import orchestration
 models.Base.metadata.create_all(bind=engine)
 
 router = APIRouter()
-ALLOWED_PHASES = {"prd", "architecture", "stories", "code"}
+ALLOWED_PHASES = set(orchestration.PHASE_SEQUENCE)
 
 
 # Dependency
@@ -211,4 +212,111 @@ def start_run_phase(
         "context_source": "resolved_input_context",
         "context_version": updated_run.context_version,
         "context_used": resolved_context,
+    }
+
+
+@router.post(
+    "/runs/{run_id}/phases/{phase}/approve",
+    response_model=schemas.PhaseApprovalResponse,
+)
+def approve_run_phase(
+    run_id: int,
+    phase: str,
+    db: Session = Depends(get_db),
+):
+    db_run = crud.get_run(db, run_id=run_id)
+    if db_run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    normalized_phase = phase.strip().lower()
+    if not orchestration.is_valid_phase(normalized_phase):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": "unsupported_phase",
+                "message": "Unsupported phase name.",
+            },
+        )
+
+    current_phase_index = (
+        db_run.current_phase_index if db_run.current_phase_index is not None else -1
+    )
+    expected_phase = orchestration.get_next_phase(current_phase_index)
+    if expected_phase is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "phase_sequence_complete",
+                "message": "Phase sequence is already complete.",
+            },
+        )
+    if normalized_phase != expected_phase:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "phase_skip_not_allowed",
+                "message": "Requested phase is not the next phase in canonical sequence.",
+                "expected_phase": expected_phase,
+                "requested_phase": normalized_phase,
+            },
+        )
+
+    crud.approve_phase_for_transition(db=db, db_run=db_run, phase=normalized_phase)
+    return {
+        "run_id": db_run.id,
+        "phase": normalized_phase,
+        "status": "approved",
+    }
+
+
+@router.post(
+    "/runs/{run_id}/phases/advance",
+    response_model=schemas.PhaseAdvanceResponse,
+)
+def advance_run_phase(
+    run_id: int,
+    db: Session = Depends(get_db),
+):
+    db_run = crud.get_run(db, run_id=run_id)
+    if db_run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    current_phase_index = (
+        db_run.current_phase_index if db_run.current_phase_index is not None else -1
+    )
+    expected_phase = orchestration.get_next_phase(current_phase_index)
+    if expected_phase is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "phase_sequence_complete",
+                "message": "Phase sequence is already complete.",
+            },
+        )
+
+    phase_statuses = dict(db_run.phase_statuses or {})
+    if db_run.pending_approved_phase != expected_phase or phase_statuses.get(expected_phase) != "approved":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "phase_not_approved",
+                "message": "Current phase must be explicitly approved before transition.",
+                "expected_phase": expected_phase,
+            },
+        )
+
+    previous_phase = db_run.current_phase
+    updated_run = crud.apply_phase_transition(
+        db=db,
+        db_run=db_run,
+        next_phase=expected_phase,
+        previous_phase=previous_phase,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+    return {
+        "run_id": updated_run.id,
+        "previous_phase": previous_phase,
+        "next_phase": expected_phase,
+        "trigger": "approval",
+        "status": "transitioned",
     }
