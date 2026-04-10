@@ -387,6 +387,34 @@ def test_start_phase_uses_resolved_context(monkeypatch):
     finally:
         app.dependency_overrides.clear()
 
+
+def test_start_phase_rejects_out_of_sequence_phase(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            phase_response = await client.post(
+                f"/api/v1/runs/{run_id}/phases/stories/start",
+            )
+            assert phase_response.status_code == 409
+            assert phase_response.json()["detail"]["error_code"] == "phase_skip_not_allowed"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_submit_clarifications_rejects_non_clarification_status(monkeypatch):
     app.dependency_overrides[get_db] = override_get_db
     mocked_orchestration = AsyncMock()
@@ -530,14 +558,8 @@ def test_phase_advancement_enforces_canonical_sequence(monkeypatch):
                     f"/api/v1/runs/{run_id}/phases/{expected_phase}/approve",
                 )
                 assert approve_response.status_code == 200
-
-                transition_response = await client.post(
-                    f"/api/v1/runs/{run_id}/phases/advance",
-                )
-                assert transition_response.status_code == 200
-                payload = transition_response.json()
-                assert payload["next_phase"] == expected_phase
-                assert payload["trigger"] == "approval"
+                assert approve_response.json()["phase"] == expected_phase
+                assert approve_response.json()["status"] == "transitioned"
 
             final_run_response = await client.get(f"/api/v1/runs/{run_id}")
             assert final_run_response.status_code == 200
@@ -573,6 +595,17 @@ def test_phase_advancement_rejects_skips_and_non_approved_transition(monkeypatch
             )
             assert skip_attempt.status_code == 409
             assert skip_attempt.json()["detail"]["error_code"] == "phase_skip_not_allowed"
+
+            valid_approval = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/approve",
+            )
+            assert valid_approval.status_code == 200
+
+            duplicate_approval = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/approve",
+            )
+            assert duplicate_approval.status_code == 409
+            assert duplicate_approval.json()["detail"]["error_code"] == "phase_skip_not_allowed"
 
     try:
         anyio.run(exercise)

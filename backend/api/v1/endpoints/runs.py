@@ -199,6 +199,29 @@ def start_run_phase(
             detail="Phase cannot start because resolved input context is unavailable.",
         )
 
+    current_phase_index = (
+        db_run.current_phase_index if db_run.current_phase_index is not None else -1
+    )
+    expected_phase = orchestration.get_next_phase(current_phase_index)
+    if expected_phase is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "phase_sequence_complete",
+                "message": "Phase sequence is already complete.",
+            },
+        )
+    if normalized_phase != expected_phase:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "phase_skip_not_allowed",
+                "message": "Requested phase is not the next phase in canonical sequence.",
+                "expected_phase": expected_phase,
+                "requested_phase": normalized_phase,
+            },
+        )
+
     updated_run = crud.append_phase_context_event(
         db=db,
         db_run=db_run,
@@ -262,10 +285,26 @@ def approve_run_phase(
         )
 
     crud.approve_phase_for_transition(db=db, db_run=db_run, phase=normalized_phase)
+    updated_run = crud.apply_phase_transition(
+        db=db,
+        db_run=db_run,
+        next_phase=expected_phase,
+        previous_phase=db_run.current_phase,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        expected_current_phase_index=current_phase_index,
+    )
+    if updated_run is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "phase_transition_conflict",
+                "message": "Phase transition conflicted with a concurrent update. Retry the request.",
+            },
+        )
     return {
-        "run_id": db_run.id,
+        "run_id": updated_run.id,
         "phase": normalized_phase,
-        "status": "approved",
+        "status": "transitioned",
     }
 
 
@@ -294,7 +333,9 @@ def advance_run_phase(
             },
         )
 
-    phase_statuses = dict(db_run.phase_statuses or {})
+    phase_statuses = (
+        db_run.phase_statuses if isinstance(db_run.phase_statuses, dict) else {}
+    )
     if db_run.pending_approved_phase != expected_phase or phase_statuses.get(expected_phase) != "approved":
         raise HTTPException(
             status_code=409,
@@ -312,7 +353,16 @@ def advance_run_phase(
         next_phase=expected_phase,
         previous_phase=previous_phase,
         timestamp=datetime.now(timezone.utc).isoformat(),
+        expected_current_phase_index=current_phase_index,
     )
+    if updated_run is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "phase_transition_conflict",
+                "message": "Phase transition conflicted with a concurrent update. Retry the request.",
+            },
+        )
     return {
         "run_id": updated_run.id,
         "previous_phase": previous_phase,

@@ -4,6 +4,16 @@ from . import models, schemas
 from backend.services import orchestration
 
 
+def _safe_phase_statuses(raw_statuses: object) -> dict[str, str]:
+    if not isinstance(raw_statuses, dict):
+        return orchestration.initialize_phase_statuses()
+    sanitized: dict[str, str] = {}
+    for phase in orchestration.PHASE_SEQUENCE:
+        value = raw_statuses.get(phase)
+        sanitized[phase] = value if isinstance(value, str) else "pending"
+    return sanitized
+
+
 def create_run(
     db: Session,
     run: schemas.RunCreate,
@@ -133,7 +143,12 @@ def approve_phase_for_transition(
     db_run: models.Run,
     phase: str,
 ):
-    phase_statuses = dict(db_run.phase_statuses or orchestration.initialize_phase_statuses())
+    phase_statuses = _safe_phase_statuses(db_run.phase_statuses)
+    already_approved = (
+        db_run.pending_approved_phase == phase and phase_statuses.get(phase) == "approved"
+    )
+    if already_approved:
+        return db_run
     phase_statuses[phase] = "approved"
     db_run.phase_statuses = phase_statuses
     db_run.pending_approved_phase = phase
@@ -158,8 +173,17 @@ def apply_phase_transition(
     next_phase: str,
     previous_phase: str | None,
     timestamp: str,
+    expected_current_phase_index: int | None = None,
 ):
-    phase_statuses = dict(db_run.phase_statuses or orchestration.initialize_phase_statuses())
+    db.refresh(db_run)
+    if (
+        expected_current_phase_index is not None
+        and (db_run.current_phase_index if db_run.current_phase_index is not None else -1)
+        != expected_current_phase_index
+    ):
+        return None
+
+    phase_statuses = _safe_phase_statuses(db_run.phase_statuses)
     phase_statuses[next_phase] = "in-progress"
     if previous_phase and previous_phase != next_phase:
         phase_statuses[previous_phase] = "approved"

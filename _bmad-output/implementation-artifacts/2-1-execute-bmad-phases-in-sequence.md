@@ -1,6 +1,6 @@
 # Story 2.1: Execute BMAD Phases in Sequence
 
-Status: review
+Status: in-progress
 
 ## Story
 
@@ -39,6 +39,16 @@ so that the development workflow is structured and predictable.
   - [x] Backend unit/integration tests for valid sequential progression across all four phases.
   - [x] Negative tests for skip/reorder attempts and non-approved transitions.
   - [x] Regression tests to ensure existing Epic 1 run lifecycle behavior remains intact.
+
+### Review Findings
+
+- [x] [Review][Patch] Approval should auto-transition phase on `/approve` to satisfy AC1 [backend/api/v1/endpoints/runs.py:222]
+- [x] [Review][Patch] `/phases/start` allows out-of-sequence phase activity bypassing sequence guardrails [backend/api/v1/endpoints/runs.py:168]
+- [x] [Review][Patch] Advance transition is vulnerable to double-advance race under concurrent requests [backend/api/v1/endpoints/runs.py:276]
+- [x] [Review][Patch] Duplicate approvals append duplicate awaiting-transition events [backend/api/v1/endpoints/runs.py:222]
+- [ ] [Review][Patch] Per-phase lifecycle states are incomplete (`awaiting-approval`/`failed` not represented) [backend/sql_app/crud.py:131]
+- [x] [Review][Patch] Phase state JSON assumes dict shape and can 500 on malformed persisted data [backend/sql_app/crud.py:131]
+- [x] [Review][Patch] Regression coverage does not include integration-level sequence checks [backend/tests/test_runs.py:514]
 
 ## Dev Notes
 
@@ -154,5 +164,5 @@ gpt-5.3-codex-low
 
 ## Story Status
 
-**Status:** review  
+**Status:** in-progress  
 **Notes:** Implementation complete with sequence enforcement, transition persistence, and passing backend tests.
