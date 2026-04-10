@@ -57,6 +57,7 @@ def create_run(
         current_phase_index=-1,
         phase_statuses=orchestration.initialize_phase_statuses(),
         pending_approved_phase=None,
+        proposal_artifacts={},
     )
     db.add(db_run)
     db.commit()
@@ -129,6 +130,81 @@ def append_phase_context_event(
             "phase": phase,
             "context_source": context_source,
             "context_version": db_run.context_version,
+        }
+    )
+    db_run.context_events = events
+    db.add(db_run)
+    db.commit()
+    db.refresh(db_run)
+    return db_run
+
+
+def generate_phase_proposal(
+    db: Session,
+    db_run: models.Run,
+    phase: str,
+):
+    proposal_artifacts = (
+        dict(db_run.proposal_artifacts)
+        if isinstance(db_run.proposal_artifacts, dict)
+        else {}
+    )
+    existing = proposal_artifacts.get(phase)
+    revision = 1
+    if isinstance(existing, dict):
+        raw_revision = existing.get("revision")
+        if isinstance(raw_revision, int) and raw_revision >= 1:
+            revision = raw_revision + 1
+
+    proposal_payload = orchestration.build_phase_proposal_payload(
+        run_id=db_run.id,
+        phase=phase,
+        phase_output=db_run.resolved_input_context or "",
+        context_version=db_run.context_version,
+        revision=revision,
+    )
+    proposal_artifacts[phase] = proposal_payload
+    db_run.proposal_artifacts = proposal_artifacts
+
+    phase_statuses = _safe_phase_statuses(db_run.phase_statuses)
+    phase_statuses[phase] = "awaiting-approval"
+    db_run.phase_statuses = phase_statuses
+    db_run.status = "awaiting-approval"
+
+    events = list(db_run.context_events or [])
+    events.append(
+        {
+            "event_type": "proposal_generated",
+            "phase": phase,
+            "artifact": {
+                "status": proposal_payload["status"],
+                "generated_at": proposal_payload["generated_at"],
+                "revision": proposal_payload["revision"],
+                "title": proposal_payload["title"],
+            },
+        }
+    )
+    db_run.context_events = events
+
+    db.add(db_run)
+    db.commit()
+    db.refresh(db_run)
+    return db_run, proposal_payload
+
+
+def record_proposal_generation_failure(
+    db: Session,
+    db_run: models.Run,
+    phase: str,
+    error_summary: str,
+):
+    events = list(db_run.context_events or [])
+    events.append(
+        {
+            "event_type": "proposal_generation_failed",
+            "phase": phase,
+            "step": "generate-phase-proposal",
+            "error_summary": error_summary,
         }
     )
     db_run.context_events = events

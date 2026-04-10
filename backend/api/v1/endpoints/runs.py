@@ -64,6 +64,18 @@ def read_run(run_id: int, db: Session = Depends(get_db)):
     db_run = crud.get_run(db, run_id=run_id)
     if db_run is None:
         raise HTTPException(status_code=404, detail="Run not found")
+    proposal_artifacts = (
+        db_run.proposal_artifacts if isinstance(db_run.proposal_artifacts, dict) else {}
+    )
+    current_phase = db_run.current_phase
+    if current_phase is None:
+        expected_phase = orchestration.get_next_phase(
+            db_run.current_phase_index if db_run.current_phase_index is not None else -1
+        )
+        current_phase = expected_phase
+    db_run.current_phase_proposal = (
+        proposal_artifacts.get(current_phase) if current_phase else None
+    )
     return db_run
 
 
@@ -228,6 +240,28 @@ def start_run_phase(
         phase=normalized_phase,
         context_source="resolved_input_context",
     )
+    try:
+        updated_run, proposal_payload = crud.generate_phase_proposal(
+            db=db,
+            db_run=updated_run,
+            phase=normalized_phase,
+        )
+    except Exception as exc:
+        crud.record_proposal_generation_failure(
+            db=db,
+            db_run=updated_run,
+            phase=normalized_phase,
+            error_summary=str(exc),
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error_code": "proposal_generation_failed",
+                "message": "Phase started but proposal generation failed.",
+                "phase": normalized_phase,
+            },
+        ) from exc
+
     return {
         "run_id": updated_run.id,
         "phase": normalized_phase,
@@ -235,6 +269,53 @@ def start_run_phase(
         "context_source": "resolved_input_context",
         "context_version": updated_run.context_version,
         "context_used": resolved_context,
+        "proposal_status": proposal_payload["status"],
+        "proposal_generated_at": proposal_payload["generated_at"],
+        "proposal_revision": proposal_payload["revision"],
+    }
+
+
+@router.get(
+    "/runs/{run_id}/phases/{phase}/proposal",
+    response_model=schemas.PhaseProposalResponse,
+)
+def read_phase_proposal(
+    run_id: int,
+    phase: str,
+    db: Session = Depends(get_db),
+):
+    db_run = crud.get_run(db, run_id=run_id)
+    if db_run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    normalized_phase = phase.strip().lower()
+    if not orchestration.is_valid_phase(normalized_phase):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": "unsupported_phase",
+                "message": "Unsupported phase name.",
+            },
+        )
+
+    proposal_artifacts = (
+        db_run.proposal_artifacts if isinstance(db_run.proposal_artifacts, dict) else {}
+    )
+    proposal = proposal_artifacts.get(normalized_phase)
+    if not isinstance(proposal, dict):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "proposal_not_ready",
+                "message": "Proposal artifact is not available for this phase yet.",
+                "phase": normalized_phase,
+            },
+        )
+
+    return {
+        "run_id": run_id,
+        "phase": normalized_phase,
+        "proposal": proposal,
     }
 
 

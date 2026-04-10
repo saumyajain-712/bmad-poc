@@ -13,6 +13,8 @@ interface Run {
         context_source: string;
         context_version: number;
     }>;
+    proposal_artifacts: Record<string, Record<string, unknown>>;
+    current_phase_proposal: Record<string, unknown> | null;
 }
 
 interface CompletenessValidationResult {

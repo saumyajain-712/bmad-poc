@@ -388,6 +388,128 @@ def test_start_phase_uses_resolved_context(monkeypatch):
         app.dependency_overrides.clear()
 
 
+def test_start_phase_generates_proposal_and_run_detail_surfaces_it(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            phase_start_response = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/start",
+            )
+            assert phase_start_response.status_code == 200
+            start_payload = phase_start_response.json()
+            assert start_payload["proposal_status"] == "generated"
+            assert start_payload["proposal_revision"] == 1
+            assert "proposal_generated_at" in start_payload
+
+            proposal_response = await client.get(
+                f"/api/v1/runs/{run_id}/phases/prd/proposal",
+            )
+            assert proposal_response.status_code == 200
+            proposal_payload = proposal_response.json()["proposal"]
+            assert proposal_payload["phase"] == "prd"
+            assert proposal_payload["status"] == "generated"
+
+            run_response = await client.get(f"/api/v1/runs/{run_id}")
+            assert run_response.status_code == 200
+            run_payload = run_response.json()
+            assert run_payload["status"] == "awaiting-approval"
+            assert run_payload["phase_statuses"]["prd"] == "awaiting-approval"
+            assert run_payload["proposal_artifacts"]["prd"]["title"] == "PRD Proposal"
+            assert run_payload["current_phase_proposal"]["phase"] == "prd"
+            assert any(
+                event.get("event_type") == "proposal_generated"
+                for event in run_payload["context_events"]
+            )
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_read_phase_proposal_returns_not_ready_until_generated(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            run_id = create_response.json()["run"]["id"]
+
+            proposal_response = await client.get(
+                f"/api/v1/runs/{run_id}/phases/prd/proposal",
+            )
+            assert proposal_response.status_code == 409
+            detail = proposal_response.json()["detail"]
+            assert detail["error_code"] == "proposal_not_ready"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_start_phase_returns_explicit_error_when_proposal_generation_fails(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    def _raise_generation_failure(**kwargs):
+        raise RuntimeError("proposal pipeline down")
+
+    monkeypatch.setattr(
+        orchestration,
+        "build_phase_proposal_payload",
+        _raise_generation_failure,
+    )
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            run_id = create_response.json()["run"]["id"]
+
+            phase_start_response = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/start",
+            )
+            assert phase_start_response.status_code == 502
+            detail = phase_start_response.json()["detail"]
+            assert detail["error_code"] == "proposal_generation_failed"
+            assert detail["phase"] == "prd"
+
+            run_response = await client.get(f"/api/v1/runs/{run_id}")
+            assert run_response.status_code == 200
+            run_payload = run_response.json()
+            assert any(
+                event.get("event_type") == "proposal_generation_failed"
+                for event in run_payload["context_events"]
+            )
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_start_phase_rejects_out_of_sequence_phase(monkeypatch):
     app.dependency_overrides[get_db] = override_get_db
     mocked_orchestration = AsyncMock()

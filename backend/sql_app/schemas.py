@@ -22,6 +22,8 @@ class Run(RunBase):
     current_phase_index: int = -1
     phase_statuses: dict[str, str] = {}
     pending_approved_phase: str | None = None
+    proposal_artifacts: dict[str, dict] = {}
+    current_phase_proposal: dict | None = None
 
     class Config:
         orm_mode = True
@@ -54,6 +56,9 @@ class PhaseStartResponse(BaseModel):
     context_source: str
     context_version: int
     context_used: str
+    proposal_status: str
+    proposal_generated_at: str
+    proposal_revision: int
 
 
 class PhaseApprovalResponse(BaseModel):
@@ -68,3 +73,9 @@ class PhaseAdvanceResponse(BaseModel):
     next_phase: str
     trigger: str
     status: str
+
+
+class PhaseProposalResponse(BaseModel):
+    run_id: int
+    phase: str
+    proposal: dict

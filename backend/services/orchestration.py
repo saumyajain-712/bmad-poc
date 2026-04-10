@@ -17,6 +17,47 @@ def is_valid_phase(phase: str) -> bool:
     return phase in PHASE_SEQUENCE
 
 
+def _normalize_summary(content: str, limit: int = 160) -> str:
+    compact = " ".join(content.split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: limit - 3].rstrip() + "..."
+
+
+def build_phase_proposal_payload(
+    *,
+    run_id: int,
+    phase: str,
+    phase_output: str,
+    context_version: int,
+    revision: int = 1,
+) -> dict:
+    if phase not in PHASE_SEQUENCE:
+        raise ValueError("Unsupported phase for proposal generation.")
+
+    normalized_output = phase_output.strip()
+    if not normalized_output:
+        raise ValueError("Cannot generate proposal without phase output.")
+
+    title = f"{phase.upper()} Proposal"
+    # Keep deterministic output for identical run inputs in simulated mode.
+    generated_at = f"run-{run_id}-ctx-{context_version}-phase-{phase}-rev-{revision}"
+    return {
+        "run_id": run_id,
+        "phase": phase,
+        "title": title,
+        "summary": _normalize_summary(normalized_output),
+        "content": normalized_output,
+        "references": [
+            "resolved_input_context",
+            f"phase-sequence:{'->'.join(PHASE_SEQUENCE)}",
+        ],
+        "status": "generated",
+        "generated_at": generated_at,
+        "revision": revision,
+    }
+
+
 async def initiate_bmad_run(api_specification: str):
     print(f"Initiating BMAD run with spec: {api_specification}")
     return {"message": "BMAD run initiated successfully", "spec": api_specification}
