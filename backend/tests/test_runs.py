@@ -678,6 +678,10 @@ def test_phase_advancement_enforces_canonical_sequence(monkeypatch):
             run_id = create_response.json()["run"]["id"]
 
             for expected_phase in ["prd", "architecture", "stories", "code"]:
+                start_response = await client.post(
+                    f"/api/v1/runs/{run_id}/phases/{expected_phase}/start",
+                )
+                assert start_response.status_code == 200
                 approve_response = await client.post(
                     f"/api/v1/runs/{run_id}/phases/{expected_phase}/approve",
                 )
@@ -720,6 +724,11 @@ def test_phase_advancement_rejects_skips_and_non_approved_transition(monkeypatch
             assert skip_attempt.status_code == 409
             assert skip_attempt.json()["detail"]["error_code"] == "phase_skip_not_allowed"
 
+            start_response = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/start",
+            )
+            assert start_response.status_code == 200
+
             valid_approval = await client.post(
                 f"/api/v1/runs/{run_id}/phases/prd/approve",
             )
@@ -728,8 +737,38 @@ def test_phase_advancement_rejects_skips_and_non_approved_transition(monkeypatch
             duplicate_approval = await client.post(
                 f"/api/v1/runs/{run_id}/phases/prd/approve",
             )
-            assert duplicate_approval.status_code == 409
-            assert duplicate_approval.json()["detail"]["error_code"] == "phase_skip_not_allowed"
+            assert duplicate_approval.status_code == 200
+            duplicate_payload = duplicate_approval.json()
+            assert duplicate_payload["status"] == "already-transitioned"
+            assert duplicate_payload["phase"] == "prd"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_approve_requires_awaiting_approval_phase_state(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            approve_without_proposal = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/approve",
+            )
+            assert approve_without_proposal.status_code == 409
+            detail = approve_without_proposal.json()["detail"]
+            assert detail["error_code"] == "phase_proposal_missing"
 
     try:
         anyio.run(exercise)

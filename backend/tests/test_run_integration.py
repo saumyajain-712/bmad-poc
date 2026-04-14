@@ -192,6 +192,10 @@ def test_phase_sequence_progression_integration(monkeypatch, tmp_path):
             run_id = create_response.json()["run"]["id"]
 
             for expected_phase in ["prd", "architecture", "stories", "code"]:
+                start_response = await client.post(
+                    f"/api/v1/runs/{run_id}/phases/{expected_phase}/start",
+                )
+                assert start_response.status_code == 200
                 approve_response = await client.post(
                     f"/api/v1/runs/{run_id}/phases/{expected_phase}/approve",
                 )

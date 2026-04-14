@@ -246,6 +246,38 @@ def start_run_phase(
             },
         )
     if normalized_phase != expected_phase:
+        proposal_artifacts = (
+            db_run.proposal_artifacts
+            if isinstance(db_run.proposal_artifacts, dict)
+            else {}
+        )
+        requested_proposal = proposal_artifacts.get(normalized_phase)
+        requested_revision = (
+            requested_proposal.get("revision")
+            if isinstance(requested_proposal, dict)
+            and isinstance(requested_proposal.get("revision"), int)
+            else None
+        )
+        prior_approval = any(
+            event.get("event_type") == "phase-approved"
+            and event.get("phase") == normalized_phase
+            and (
+                requested_revision is None or event.get("revision") == requested_revision
+            )
+            for event in list(db_run.context_events or [])
+        )
+        if prior_approval and db_run.current_phase == normalized_phase:
+            return {
+                "run_id": db_run.id,
+                "phase": normalized_phase,
+                "status": "already-transitioned",
+                "previous_phase": db_run.current_phase,
+                "next_phase": db_run.current_phase,
+                "current_phase": db_run.current_phase,
+                "current_phase_index": db_run.current_phase_index,
+                "phase_statuses": db_run.phase_statuses or {},
+                "current_phase_proposal": proposal_artifacts.get(db_run.current_phase),
+            }
         raise HTTPException(
             status_code=409,
             detail={
@@ -372,6 +404,29 @@ def approve_run_phase(
         db_run.current_phase_index if db_run.current_phase_index is not None else -1
     )
     expected_phase = orchestration.get_next_phase(current_phase_index)
+    if normalized_phase == db_run.current_phase:
+        proposal_artifacts = (
+            db_run.proposal_artifacts
+            if isinstance(db_run.proposal_artifacts, dict)
+            else {}
+        )
+        prior_approval = any(
+            event.get("event_type") == "phase-approved"
+            and event.get("phase") == normalized_phase
+            for event in list(db_run.context_events or [])
+        )
+        if prior_approval:
+            return {
+                "run_id": db_run.id,
+                "phase": normalized_phase,
+                "status": "already-transitioned",
+                "previous_phase": db_run.current_phase,
+                "next_phase": db_run.current_phase,
+                "current_phase": db_run.current_phase,
+                "current_phase_index": db_run.current_phase_index,
+                "phase_statuses": db_run.phase_statuses or {},
+                "current_phase_proposal": proposal_artifacts.get(db_run.current_phase),
+            }
     if expected_phase is None:
         raise HTTPException(
             status_code=409,
@@ -390,17 +445,26 @@ def approve_run_phase(
                 "requested_phase": normalized_phase,
             },
         )
+    if db_run.status not in {"initiated", "in-progress", "awaiting-approval"}:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "run_not_active",
+                "message": "Run must be active before phase approval is accepted.",
+            },
+        )
 
-    crud.approve_phase_for_transition(db=db, db_run=db_run, phase=normalized_phase)
-    updated_run = crud.apply_phase_transition(
+    previous_phase = db_run.current_phase
+    approval_timestamp = datetime.now(timezone.utc).isoformat()
+    updated_run, approval_outcome = crud.approve_phase_and_transition(
         db=db,
         db_run=db_run,
-        next_phase=expected_phase,
-        previous_phase=db_run.current_phase,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        phase=normalized_phase,
         expected_current_phase_index=current_phase_index,
+        approver="session:api",
+        timestamp=approval_timestamp,
     )
-    if updated_run is None:
+    if approval_outcome == "phase_transition_conflict":
         raise HTTPException(
             status_code=409,
             detail={
@@ -408,10 +472,50 @@ def approve_run_phase(
                 "message": "Phase transition conflicted with a concurrent update. Retry the request.",
             },
         )
+    if approval_outcome == "phase_proposal_missing":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "phase_proposal_missing",
+                "message": "Current phase proposal is required before approval can be accepted.",
+                "phase": normalized_phase,
+            },
+        )
+    if approval_outcome == "phase_not_awaiting_approval":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "phase_not_awaiting_approval",
+                "message": "Phase must be in awaiting-approval state before approval is accepted.",
+                "phase": normalized_phase,
+            },
+        )
+    if approval_outcome == "phase_sequence_complete":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "phase_sequence_complete",
+                "message": "Phase sequence is already complete.",
+            },
+        )
+
+    proposal_artifacts = (
+        updated_run.proposal_artifacts
+        if isinstance(updated_run.proposal_artifacts, dict)
+        else {}
+    )
+    next_phase = updated_run.current_phase
+    current_proposal = proposal_artifacts.get(next_phase) if next_phase else None
     return {
         "run_id": updated_run.id,
         "phase": normalized_phase,
-        "status": "transitioned",
+        "status": approval_outcome,
+        "previous_phase": previous_phase,
+        "next_phase": next_phase,
+        "current_phase": updated_run.current_phase,
+        "current_phase_index": updated_run.current_phase_index,
+        "phase_statuses": updated_run.phase_statuses,
+        "current_phase_proposal": current_proposal,
     }
 
 

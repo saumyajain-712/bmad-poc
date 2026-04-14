@@ -65,6 +65,12 @@ class PhaseApprovalResponse(BaseModel):
     run_id: int
     phase: str
     status: str
+    previous_phase: str | None = None
+    next_phase: str | None = None
+    current_phase: str | None = None
+    current_phase_index: int | None = None
+    phase_statuses: dict[str, str] = Field(default_factory=dict)
+    current_phase_proposal: dict | None = None
 
 
 class PhaseAdvanceResponse(BaseModel):
