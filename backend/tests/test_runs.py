@@ -465,7 +465,7 @@ def test_read_phase_proposal_returns_not_ready_until_generated(monkeypatch):
         app.dependency_overrides.clear()
 
 
-def test_start_phase_returns_explicit_error_when_proposal_generation_fails(monkeypatch):
+def test_start_phase_returns_graceful_failure_when_proposal_generation_fails(monkeypatch):
     app.dependency_overrides[get_db] = override_get_db
     mocked_orchestration = AsyncMock()
     monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
@@ -491,10 +491,12 @@ def test_start_phase_returns_explicit_error_when_proposal_generation_fails(monke
             phase_start_response = await client.post(
                 f"/api/v1/runs/{run_id}/phases/prd/start",
             )
-            assert phase_start_response.status_code == 502
-            detail = phase_start_response.json()["detail"]
-            assert detail["error_code"] == "proposal_generation_failed"
-            assert detail["phase"] == "prd"
+            assert phase_start_response.status_code == 200
+            payload = phase_start_response.json()
+            assert payload["status"] == "started"
+            assert payload["proposal_status"] == "failed"
+            assert payload["proposal_generated_at"] is None
+            assert payload["proposal_revision"] is None
 
             run_response = await client.get(f"/api/v1/runs/{run_id}")
             assert run_response.status_code == 200

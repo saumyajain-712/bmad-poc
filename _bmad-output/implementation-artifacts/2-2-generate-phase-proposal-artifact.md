@@ -1,6 +1,6 @@
 # Story 2.2: Generate Phase Proposal Artifact
 
-Status: review
+Status: done
 
 ## Story
 
@@ -39,6 +39,19 @@ so that developers can review and approve or modify the agent's work.
   - [x] Positive tests for each phase proposal generation and retrieval.
   - [x] Negative tests for generation failure path and no-proposal-yet access.
   - [x] Regression tests to confirm Story 2.1 sequencing and approval gate behavior remain intact.
+
+### Review Findings
+
+- [x] [Review][Decision] Proposal generation timing conflicts with story intent (start vs completion) — resolved: keep proposal generation at phase start as accepted intent for this story.
+- [x] [Review][Decision] Proposal error handling currently reports 502 after partially committed state — resolved: use graceful partial success with `proposal_status=failed`.
+- [x] [Review][Patch] Missing DB migration for `proposal_artifacts` column [backend/api/v1/endpoints/runs.py:31]
+- [x] [Review][Patch] Proposal payload source should be explicit phase input for start-time generation [backend/sql_app/crud.py:146]
+- [x] [Review][Patch] `current_phase_proposal` can be stale because run detail keys off `current_phase` only [backend/api/v1/endpoints/runs.py:86]
+- [x] [Review][Patch] Mutable defaults in Pydantic schema fields should use `default_factory` [backend/sql_app/schemas.py:15]
+- [x] [Review][Patch] Frontend `context_events` type is too strict for heterogeneous event payloads [frontend/src/services/bmadService.ts:10]
+- [x] [Review][Patch] Remove tracked `__pycache__` `.pyc` artifacts from active changes [backend/tests/__pycache__/test_runs.cpython-311-pytest-9.0.2.pyc:1]
+- [x] [Review][Defer] Non-atomic approval/transition race in approve flow [backend/api/v1/endpoints/runs.py:369] — deferred, pre-existing
+- [x] [Review][Defer] Clarification endpoint blocks `initiation-failed` retries without questions [backend/api/v1/endpoints/runs.py:106] — deferred, pre-existing
 
 ## Dev Notes
 
@@ -165,5 +178,5 @@ gpt-5.3-codex-low
 
 ## Story Status
 
-**Status:** review  
-**Notes:** Story implementation complete and validated by backend test suite; ready for code review.
+**Status:** done  
+**Notes:** Review findings addressed with accepted decisions and patch fixes; backend run tests pass.

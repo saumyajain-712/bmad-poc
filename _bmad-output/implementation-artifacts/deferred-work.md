@@ -5,3 +5,8 @@
 ## Deferred from: code review of 1-3-request-input-clarifications.md (2026-04-09)
 
 - Clarification heuristics may over-trigger for valid domain terms in `backend/services/input_validation.py`; user deferred broadening due to MVP scope (strict heuristics sufficient for POC), to revisit in a later story.
+
+## Deferred from: code review of 2-2-generate-phase-proposal-artifact.md (2026-04-10)
+
+- Non-atomic approval/transition race in approve flow can persist partial approval state on transition conflict (`backend/api/v1/endpoints/runs.py`, `backend/sql_app/crud.py`) — deferred as pre-existing to current change set.
+- Clarification endpoint allows `initiation-failed` status but still hard-requires clarification questions, blocking retry path when there are no questions (`backend/api/v1/endpoints/runs.py`) — deferred as pre-existing to current change set.

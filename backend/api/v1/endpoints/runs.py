@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 
@@ -27,6 +28,24 @@ def get_db():
 
 def _normalize_question_key(question: str) -> str:
     return " ".join(question.strip().split()).lower()
+
+
+def _ensure_run_table_compatibility() -> None:
+    inspector = inspect(engine)
+    if "runs" not in inspector.get_table_names():
+        return
+    column_names = {column["name"] for column in inspector.get_columns("runs")}
+    if "proposal_artifacts" in column_names:
+        return
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "ALTER TABLE runs ADD COLUMN proposal_artifacts JSON NOT NULL DEFAULT '{}'"
+            )
+        )
+
+
+_ensure_run_table_compatibility()
 
 
 @router.post("/runs/", response_model=schemas.RunInitiationResponse)
@@ -68,13 +87,16 @@ def read_run(run_id: int, db: Session = Depends(get_db)):
         db_run.proposal_artifacts if isinstance(db_run.proposal_artifacts, dict) else {}
     )
     current_phase = db_run.current_phase
-    if current_phase is None:
-        expected_phase = orchestration.get_next_phase(
-            db_run.current_phase_index if db_run.current_phase_index is not None else -1
-        )
-        current_phase = expected_phase
+    expected_phase = orchestration.get_next_phase(
+        db_run.current_phase_index if db_run.current_phase_index is not None else -1
+    )
+    proposal_phase = db_run.pending_approved_phase
+    if proposal_phase is None and db_run.status == "awaiting-approval":
+        proposal_phase = expected_phase
+    if proposal_phase is None:
+        proposal_phase = current_phase or expected_phase
     db_run.current_phase_proposal = (
-        proposal_artifacts.get(current_phase) if current_phase else None
+        proposal_artifacts.get(proposal_phase) if proposal_phase else None
     )
     return db_run
 
@@ -245,22 +267,26 @@ def start_run_phase(
             db=db,
             db_run=updated_run,
             phase=normalized_phase,
+            phase_output=resolved_context,
         )
     except Exception as exc:
-        crud.record_proposal_generation_failure(
+        updated_run = crud.record_proposal_generation_failure(
             db=db,
             db_run=updated_run,
             phase=normalized_phase,
             error_summary=str(exc),
         )
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "error_code": "proposal_generation_failed",
-                "message": "Phase started but proposal generation failed.",
-                "phase": normalized_phase,
-            },
-        ) from exc
+        return {
+            "run_id": updated_run.id,
+            "phase": normalized_phase,
+            "status": "started",
+            "context_source": "resolved_input_context",
+            "context_version": updated_run.context_version,
+            "context_used": resolved_context,
+            "proposal_status": "failed",
+            "proposal_generated_at": None,
+            "proposal_revision": None,
+        }
 
     return {
         "run_id": updated_run.id,

@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class RunBase(BaseModel):
@@ -12,17 +12,17 @@ class RunCreate(RunBase):
 class Run(RunBase):
     id: int
     status: str
-    missing_items: list[str] = []
-    clarification_questions: list[str] = []
+    missing_items: list[str] = Field(default_factory=list)
+    clarification_questions: list[str] = Field(default_factory=list)
     original_input: str
     resolved_input_context: str | None = None
     context_version: int = 0
-    context_events: list[dict] = []
+    context_events: list[dict] = Field(default_factory=list)
     current_phase: str | None = None
     current_phase_index: int = -1
-    phase_statuses: dict[str, str] = {}
+    phase_statuses: dict[str, str] = Field(default_factory=dict)
     pending_approved_phase: str | None = None
-    proposal_artifacts: dict[str, dict] = {}
+    proposal_artifacts: dict[str, dict] = Field(default_factory=dict)
     current_phase_proposal: dict | None = None
 
     class Config:
@@ -57,8 +57,8 @@ class PhaseStartResponse(BaseModel):
     context_version: int
     context_used: str
     proposal_status: str
-    proposal_generated_at: str
-    proposal_revision: int
+    proposal_generated_at: str | None = None
+    proposal_revision: int | None = None
 
 
 class PhaseApprovalResponse(BaseModel):

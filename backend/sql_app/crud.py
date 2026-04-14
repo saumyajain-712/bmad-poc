@@ -143,6 +143,7 @@ def generate_phase_proposal(
     db: Session,
     db_run: models.Run,
     phase: str,
+    phase_output: str,
 ):
     proposal_artifacts = (
         dict(db_run.proposal_artifacts)
@@ -159,7 +160,7 @@ def generate_phase_proposal(
     proposal_payload = orchestration.build_phase_proposal_payload(
         run_id=db_run.id,
         phase=phase,
-        phase_output=db_run.resolved_input_context or "",
+        phase_output=phase_output,
         context_version=db_run.context_version,
         revision=revision,
     )
