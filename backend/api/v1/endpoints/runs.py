@@ -410,9 +410,19 @@ def approve_run_phase(
             if isinstance(db_run.proposal_artifacts, dict)
             else {}
         )
+        requested_proposal = proposal_artifacts.get(normalized_phase)
+        requested_revision = (
+            requested_proposal.get("revision")
+            if isinstance(requested_proposal, dict)
+            and isinstance(requested_proposal.get("revision"), int)
+            else None
+        )
         prior_approval = any(
             event.get("event_type") == "phase-approved"
             and event.get("phase") == normalized_phase
+            and (
+                requested_revision is None or event.get("revision") == requested_revision
+            )
             for event in list(db_run.context_events or [])
         )
         if prior_approval:
@@ -478,6 +488,15 @@ def approve_run_phase(
             detail={
                 "error_code": "phase_proposal_missing",
                 "message": "Current phase proposal is required before approval can be accepted.",
+                "phase": normalized_phase,
+            },
+        )
+    if approval_outcome == "phase_proposal_failed":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "phase_proposal_failed",
+                "message": "Failed phase proposals cannot be approved.",
                 "phase": normalized_phase,
             },
         )

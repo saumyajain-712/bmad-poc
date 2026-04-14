@@ -316,20 +316,29 @@ def approve_phase_and_transition(
     approver: str,
     timestamp: str,
 ):
-    db.refresh(db_run)
+    locked_run = (
+        db.query(models.Run)
+        .filter(models.Run.id == db_run.id)
+        .with_for_update()
+        .first()
+    )
+    if locked_run is None:
+        return db_run, "phase_transition_conflict"
     current_phase_index = (
-        db_run.current_phase_index if db_run.current_phase_index is not None else -1
+        locked_run.current_phase_index if locked_run.current_phase_index is not None else -1
     )
     if current_phase_index != expected_current_phase_index:
-        return db_run, "phase_transition_conflict"
+        return locked_run, "phase_transition_conflict"
 
-    phase_statuses = _safe_phase_statuses(db_run.phase_statuses)
+    phase_statuses = _safe_phase_statuses(locked_run.phase_statuses)
     proposal_artifacts = (
-        db_run.proposal_artifacts if isinstance(db_run.proposal_artifacts, dict) else {}
+        locked_run.proposal_artifacts
+        if isinstance(locked_run.proposal_artifacts, dict)
+        else {}
     )
     proposal = proposal_artifacts.get(phase)
     proposal_revision = proposal.get("revision") if isinstance(proposal, dict) else None
-    events = list(db_run.context_events or [])
+    events = list(locked_run.context_events or [])
     prior_approval_event = _extract_latest_approval_event(
         events=events,
         phase=phase,
@@ -337,23 +346,29 @@ def approve_phase_and_transition(
     )
 
     if not isinstance(proposal, dict):
-        return db_run, "phase_proposal_missing"
+        return locked_run, "phase_proposal_missing"
+    if proposal.get("status") == "failed":
+        return locked_run, "phase_proposal_failed"
 
     if (
-        db_run.status != "awaiting-approval"
+        locked_run.status != "awaiting-approval"
         or phase_statuses.get(phase) != "awaiting-approval"
     ):
         if prior_approval_event is not None:
-            return db_run, "already-transitioned"
-        return db_run, "phase_not_awaiting_approval"
+            return locked_run, "already-transitioned"
+        return locked_run, "phase_not_awaiting_approval"
+
+    next_phase = orchestration.get_next_phase(current_phase_index)
+    if next_phase is None:
+        return locked_run, "phase_sequence_complete"
 
     phase_statuses[phase] = "approved"
-    db_run.phase_statuses = phase_statuses
-    db_run.pending_approved_phase = phase
+    locked_run.phase_statuses = phase_statuses
+    locked_run.pending_approved_phase = phase
     events.append(
         {
             "event_type": "phase-approved",
-            "run_id": db_run.id,
+            "run_id": locked_run.id,
             "phase": phase,
             "revision": proposal_revision if isinstance(proposal_revision, int) else None,
             "proposal_marker": proposal.get("generated_at"),
@@ -361,19 +376,15 @@ def approve_phase_and_transition(
             "timestamp": timestamp,
         }
     )
-
-    next_phase = orchestration.get_next_phase(current_phase_index)
-    if next_phase is None:
-        return db_run, "phase_sequence_complete"
-    previous_phase = db_run.current_phase
+    previous_phase = locked_run.current_phase
     phase_statuses[next_phase] = "in-progress"
     if previous_phase and previous_phase != next_phase:
         phase_statuses[previous_phase] = "approved"
-    db_run.phase_statuses = phase_statuses
-    db_run.current_phase = next_phase
-    db_run.current_phase_index = current_phase_index + 1
-    db_run.pending_approved_phase = None
-    db_run.status = (
+    locked_run.phase_statuses = phase_statuses
+    locked_run.current_phase = next_phase
+    locked_run.current_phase_index = current_phase_index + 1
+    locked_run.pending_approved_phase = None
+    locked_run.status = (
         "phase-sequence-complete"
         if next_phase == orchestration.TERMINAL_PHASE
         else "in-progress"
@@ -387,8 +398,8 @@ def approve_phase_and_transition(
             "timestamp": timestamp,
         }
     )
-    db_run.context_events = events
-    db.add(db_run)
+    locked_run.context_events = events
+    db.add(locked_run)
     db.commit()
-    db.refresh(db_run)
-    return db_run, "transitioned"
+    db.refresh(locked_run)
+    return locked_run, "transitioned"

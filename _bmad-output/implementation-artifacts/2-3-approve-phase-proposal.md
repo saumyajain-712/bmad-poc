@@ -1,6 +1,6 @@
 # Story 2.3: Approve Phase Proposal
 
-Status: review
+Status: in-progress
 
 ## Story
 
@@ -43,6 +43,16 @@ so that I can govern the progression of the AI-assisted development workflow.
   - [x] Positive tests for approval recording and progression to the next phase.
   - [x] Negative tests for no-proposal, wrong-status, duplicate approval, and out-of-order approval attempts.
   - [x] Regression tests confirming Story 2.1 sequencing and Story 2.2 proposal lifecycle remain intact.
+
+### Review Findings
+
+- [x] [Review][Decision] Duplicate approve response semantics changed to 200 OK — resolved: keep idempotent success (`already-transitioned`) by design.
+- [x] [Review][Decision] Exact proposal-context validation contract for approval requests — resolved: keep current API contract without client-supplied revision/marker (server-side best-effort).
+- [x] [Review][Patch] Early return in terminal approval path may leak partial ORM state when sequence is complete [backend/sql_app/crud.py]
+- [x] [Review][Patch] Revision-agnostic idempotency check can treat regenerated proposal approvals as already transitioned [backend/api/v1/endpoints/runs.py]
+- [x] [Review][Patch] Concurrent duplicate approvals can both report success due to non-atomic race window [backend/sql_app/crud.py]
+- [x] [Review][Patch] Approval test coverage misses failed-proposal and not-awaiting-approval negative paths [backend/tests/test_runs.py]
+- [ ] [Review][Patch] Compiled Python cache artifacts were committed and should be excluded from source control [backend/**/__pycache__/*.pyc] — partially addressed with root `.gitignore`; tracked cache cleanup remains pending.
 
 ## Dev Notes
 
@@ -166,5 +176,5 @@ gpt-5.3-codex-low
 
 ## Story Status
 
-**Status:** review  
-**Notes:** Approval flow implementation completed with atomic transitions, explicit guardrails, and passing regression/integration tests.
+**Status:** in-progress  
+**Notes:** Approval flow implementation completed with atomic transitions and guardrails; one repo-wide cache-artifact cleanup item remains from code review.

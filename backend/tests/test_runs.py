@@ -774,3 +774,96 @@ def test_approve_requires_awaiting_approval_phase_state(monkeypatch):
         anyio.run(exercise)
     finally:
         app.dependency_overrides.clear()
+
+
+def test_approve_rejects_failed_phase_proposal(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            start_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+            assert start_response.status_code == 200
+
+            db = TestingSessionLocal()
+            try:
+                db_run = db.query(models.Run).filter(models.Run.id == run_id).first()
+                proposal_artifacts = (
+                    dict(db_run.proposal_artifacts)
+                    if isinstance(db_run.proposal_artifacts, dict)
+                    else {}
+                )
+                prd_proposal = (
+                    dict(proposal_artifacts.get("prd"))
+                    if isinstance(proposal_artifacts.get("prd"), dict)
+                    else {}
+                )
+                prd_proposal["status"] = "failed"
+                proposal_artifacts["prd"] = prd_proposal
+                db_run.proposal_artifacts = proposal_artifacts
+                db.add(db_run)
+                db.commit()
+            finally:
+                db.close()
+
+            approve_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/approve")
+            assert approve_response.status_code == 409
+            detail = approve_response.json()["detail"]
+            assert detail["error_code"] == "phase_proposal_failed"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_approve_rejects_when_proposal_not_awaiting_approval(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            start_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+            assert start_response.status_code == 200
+
+            db = TestingSessionLocal()
+            try:
+                db_run = db.query(models.Run).filter(models.Run.id == run_id).first()
+                phase_statuses = (
+                    dict(db_run.phase_statuses) if isinstance(db_run.phase_statuses, dict) else {}
+                )
+                phase_statuses["prd"] = "in-progress"
+                db_run.phase_statuses = phase_statuses
+                db_run.status = "in-progress"
+                db.add(db_run)
+                db.commit()
+            finally:
+                db.close()
+
+            approve_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/approve")
+            assert approve_response.status_code == 409
+            detail = approve_response.json()["detail"]
+            assert detail["error_code"] == "phase_not_awaiting_approval"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
