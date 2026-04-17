@@ -1,11 +1,19 @@
 import React from 'react';
-import type { RunTimelineEvent } from '../../services/bmadService';
+import { TOOL_CALL_COMPLETED_EVENT_TYPE, type RunTimelineEvent } from '../../services/bmadService';
+import { summarizeToolPayload } from './toolEventPresentation';
 
 interface RunTimelineProps {
   events: RunTimelineEvent[];
 }
 
 const formatEventDetail = (event: RunTimelineEvent): string => {
+  if (event.event_type === TOOL_CALL_COMPLETED_EVENT_TYPE) {
+    const name = event.tool_name || 'unknown_tool';
+    const inSummary = summarizeToolPayload(event.tool_input);
+    const outSummary = summarizeToolPayload(event.tool_output);
+    return `Tool: ${name} | in: ${inSummary} | out: ${outSummary}`;
+  }
+
   if (event.event_type === 'phase-status-changed') {
     return `${event.old_status || 'unknown'} -> ${event.new_status || 'unknown'} (${event.reason || 'n/a'})`;
   }
@@ -48,18 +56,43 @@ const RunTimeline: React.FC<RunTimelineProps> = ({ events }) => {
       <p style={{ marginTop: 0 }}>
         <strong>Run timeline</strong>
       </p>
-      <ul style={{ marginBottom: 0 }}>
-        {events.map((event, index) => (
-          <li key={eventKey(event, index)}>
-            <strong>{formatTimestamp(event.timestamp)}</strong>
-            {' | '}
-            {event.phase || 'unscoped'}
-            {' | '}
-            {event.event_type}
-            {' | '}
-            {formatEventDetail(event)}
-          </li>
-        ))}
+      <ul style={{ marginBottom: 0, paddingLeft: 18 }}>
+        {events.map((event, index) => {
+          const isTool = event.event_type === TOOL_CALL_COMPLETED_EVENT_TYPE;
+          return (
+            <li
+              key={eventKey(event, index)}
+              style={
+                isTool
+                  ? {
+                      marginBottom: 6,
+                      padding: '6px 8px',
+                      borderLeft: '3px solid #5bc0de',
+                      background: '#f4fafc',
+                      fontFamily: 'Consolas, ui-monospace, monospace',
+                      fontSize: 13,
+                    }
+                  : { marginBottom: 4 }
+              }
+            >
+              <span style={isTool ? { fontFamily: 'inherit' } : undefined}>
+                <strong>{formatTimestamp(event.timestamp)}</strong>
+                {' | '}
+                {event.phase || 'unscoped'}
+                {' | '}
+                {isTool ? (
+                  <span style={{ color: '#31708f' }}>
+                    <strong>{event.event_type}</strong>
+                  </span>
+                ) : (
+                  event.event_type
+                )}
+                {' | '}
+              </span>
+              {formatEventDetail(event)}
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

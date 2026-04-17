@@ -1,5 +1,56 @@
 PHASE_SEQUENCE: tuple[str, ...] = ("prd", "architecture", "stories", "code")
 TERMINAL_PHASE = PHASE_SEQUENCE[-1]
+
+# Canonical context_events type for simulated agent tool completions (Story 3.2).
+TOOL_CALL_COMPLETED_EVENT_TYPE = "tool-call-completed"
+
+
+def append_simulated_tool_call_events_for_proposal(
+    events: list[dict],
+    *,
+    phase: str,
+    run_id: int,
+    revision: int,
+    timestamp: str,
+) -> None:
+    """
+    Append deterministic mock tool-call events before proposal_generated.
+    Payloads depend only on phase, run_id, and revision so identical inputs yield identical traces.
+    """
+    events.append(
+        {
+            "event_type": TOOL_CALL_COMPLETED_EVENT_TYPE,
+            "phase": phase,
+            "timestamp": timestamp,
+            "tool_name": "search_files",
+            "tool_input": {
+                "pattern": f"*.{phase}*.md",
+                "scope": "workspace",
+            },
+            "tool_output": {
+                "matches": [f"docs/{phase}/context.md"],
+                "count": 1,
+                "run_id": run_id,
+                "revision_token": revision,
+            },
+        }
+    )
+    events.append(
+        {
+            "event_type": TOOL_CALL_COMPLETED_EVENT_TYPE,
+            "phase": phase,
+            "timestamp": timestamp,
+            "tool_name": "read_file",
+            "tool_input": {
+                "path": f"docs/{phase}/context.md",
+                "encoding": "utf-8",
+            },
+            "tool_output": {
+                "lines": 42,
+                "preview": f"stub content for {phase} rev {revision}",
+            },
+        }
+    )
 PHASE_STATUSES: tuple[str, ...] = (
     "pending",
     "in-progress",

@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import RunTimeline from '../RunTimeline';
+import { redactSensitivePatterns } from '../toolEventPresentation';
+import { TOOL_CALL_COMPLETED_EVENT_TYPE } from '../../../services/bmadService';
 
 describe('RunTimeline', () => {
   it('renders timeline rows in provided order with required columns', () => {
@@ -65,6 +67,36 @@ describe('RunTimeline', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent('context-resolved');
     expect(rows[1]).toHaveTextContent('phase-approved');
+  });
+
+  it('renders tool-call-completed rows with tool label and summaries', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: TOOL_CALL_COMPLETED_EVENT_TYPE,
+            phase: 'prd',
+            timestamp: '2026-04-17T16:00:05Z',
+            tool_name: 'read_file',
+            tool_input: { path: 'docs/prd/context.md' },
+            tool_output: { lines: 10, preview: 'outline' },
+          },
+        ]}
+      />
+    );
+
+    const row = screen.getByRole('listitem');
+    expect(row).toHaveTextContent('2026-04-17T16:00:05Z | prd | tool-call-completed');
+    expect(row).toHaveTextContent('Tool: read_file');
+    expect(row).toHaveTextContent('in:');
+    expect(row).toHaveTextContent('out:');
+  });
+
+  it('redacts obvious secret-like substrings in tool payload summaries', () => {
+    const dirty = '{"token":"Bearer abc123xyz","k":"sk-abcdefghijklmnopqrstuv"}';
+    expect(redactSensitivePatterns(dirty)).toContain('[redacted]');
+    expect(redactSensitivePatterns(dirty)).not.toContain('Bearer abc123xyz');
+    expect(redactSensitivePatterns(dirty)).not.toContain('sk-abcdefghijklmnopqrstuv');
   });
 
   it('renders fallback labels when timestamp or phase are missing', () => {

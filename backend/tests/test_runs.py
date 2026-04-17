@@ -438,6 +438,49 @@ def test_start_phase_generates_proposal_and_run_detail_surfaces_it(monkeypatch):
         app.dependency_overrides.clear()
 
 
+def test_phase_proposal_persists_tool_call_events_before_proposal_generated(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            phase_start_response = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/start",
+            )
+            assert phase_start_response.status_code == 200
+
+            run_response = await client.get(f"/api/v1/runs/{run_id}")
+            assert run_response.status_code == 200
+            events = run_response.json()["context_events"]
+            types = [e.get("event_type") for e in events if isinstance(e, dict)]
+            assert "proposal_generated" in types
+            pg_idx = types.index("proposal_generated")
+            tool_events = [e for e in events if isinstance(e, dict) and e.get("event_type") == "tool-call-completed"]
+            assert len(tool_events) == 2
+            tool_idxs = [i for i, e in enumerate(events) if isinstance(e, dict) and e.get("event_type") == "tool-call-completed"]
+            assert all(i < pg_idx for i in tool_idxs)
+            for e in tool_events:
+                assert e.get("phase") == "prd"
+                assert "timestamp" in e
+                assert e.get("tool_name") in ("search_files", "read_file")
+                assert "tool_input" in e
+                assert "tool_output" in e
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_read_phase_proposal_returns_not_ready_until_generated(monkeypatch):
     app.dependency_overrides[get_db] = override_get_db
     mocked_orchestration = AsyncMock()

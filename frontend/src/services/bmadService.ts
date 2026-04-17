@@ -1,3 +1,6 @@
+/** Matches backend `orchestration.TOOL_CALL_COMPLETED_EVENT_TYPE` */
+export const TOOL_CALL_COMPLETED_EVENT_TYPE = 'tool-call-completed';
+
 export interface RunTimelineEvent {
     event_type: string;
     run_id?: number;
@@ -14,6 +17,10 @@ export interface RunTimelineEvent {
     step?: string;
     error_summary?: string;
     artifact?: Record<string, unknown>;
+    /** Simulated agent tool call (Story 3.2); snake_case matches API JSON */
+    tool_name?: string;
+    tool_input?: Record<string, unknown> | string;
+    tool_output?: Record<string, unknown> | string;
 }
 
 export interface Run {

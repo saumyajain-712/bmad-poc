@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from sqlalchemy.orm import Session
 
 from . import models, schemas
@@ -497,6 +499,14 @@ def generate_phase_proposal(
     )
     db_run.phase_statuses = phase_statuses
     db_run.status = "awaiting-approval"
+    tool_ts = datetime.now(timezone.utc).isoformat()
+    orchestration.append_simulated_tool_call_events_for_proposal(
+        events,
+        phase=phase,
+        run_id=db_run.id,
+        revision=revision,
+        timestamp=tool_ts,
+    )
     events.append(
         {
             "event_type": "proposal_generated",
