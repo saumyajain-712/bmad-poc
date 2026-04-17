@@ -716,7 +716,10 @@ def test_phase_advancement_rejects_skips_and_non_approved_transition(monkeypatch
 
             not_approved_transition = await client.post(f"/api/v1/runs/{run_id}/phases/advance")
             assert not_approved_transition.status_code == 409
-            assert not_approved_transition.json()["detail"]["error_code"] == "phase_not_approved"
+            blocked_detail = not_approved_transition.json()["detail"]
+            assert blocked_detail["error_code"] == "phase_advancement_blocked"
+            assert blocked_detail["reason"] == "phase_proposal_missing"
+            assert blocked_detail["blocked"] is True
 
             skip_attempt = await client.post(
                 f"/api/v1/runs/{run_id}/phases/stories/approve",
@@ -734,6 +737,17 @@ def test_phase_advancement_rejects_skips_and_non_approved_transition(monkeypatch
             )
             assert valid_approval.status_code == 200
 
+            run_after_approval = await client.get(f"/api/v1/runs/{run_id}")
+            assert run_after_approval.status_code == 200
+            run_payload = run_after_approval.json()
+            assert any(
+                event.get("event_type") == "phase-transition-blocked"
+                and event.get("phase") == "prd"
+                and event.get("attempted_action") == "advance"
+                and event.get("reason") == "phase_proposal_missing"
+                for event in run_payload["context_events"]
+            )
+
             duplicate_approval = await client.post(
                 f"/api/v1/runs/{run_id}/phases/prd/approve",
             )
@@ -741,6 +755,110 @@ def test_phase_advancement_rejects_skips_and_non_approved_transition(monkeypatch
             duplicate_payload = duplicate_approval.json()
             assert duplicate_payload["status"] == "already-transitioned"
             assert duplicate_payload["phase"] == "prd"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_phase_advancement_blocks_without_explicit_decision_event(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            start_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+            assert start_response.status_code == 200
+
+            blocked_advance = await client.post(f"/api/v1/runs/{run_id}/phases/advance")
+            assert blocked_advance.status_code == 409
+            blocked_detail = blocked_advance.json()["detail"]
+            assert blocked_detail["error_code"] == "phase_advancement_blocked"
+            assert blocked_detail["reason"] == "explicit_user_decision_required"
+            assert blocked_detail["awaiting_user_decision"] is True
+
+            run_response = await client.get(f"/api/v1/runs/{run_id}")
+            assert run_response.status_code == 200
+            run_payload = run_response.json()
+            assert run_payload["status"] == "awaiting-approval"
+            assert run_payload["current_phase"] is None
+            assert run_payload["phase_statuses"]["prd"] == "awaiting-approval"
+            assert run_payload["awaiting_user_decision"] is True
+            assert run_payload["blocked_reason"] == "explicit user decision required"
+            assert run_payload["can_advance_phase"] is False
+            assert any(
+                event.get("event_type") == "phase-transition-blocked"
+                and event.get("phase") == "prd"
+                and event.get("attempted_action") == "advance"
+                and event.get("reason") == "explicit_user_decision_required"
+                for event in run_payload["context_events"]
+            )
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_phase_advancement_allows_transition_with_recorded_decision(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            start_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+            assert start_response.status_code == 200
+
+            db = TestingSessionLocal()
+            try:
+                db_run = db.query(models.Run).filter(models.Run.id == run_id).first()
+                phase_statuses = (
+                    dict(db_run.phase_statuses) if isinstance(db_run.phase_statuses, dict) else {}
+                )
+                phase_statuses["prd"] = "approved"
+                db_run.phase_statuses = phase_statuses
+                db_run.pending_approved_phase = "prd"
+                events = list(db_run.context_events or [])
+                events.append(
+                    {
+                        "event_type": "phase-approved",
+                        "run_id": run_id,
+                        "phase": "prd",
+                        "revision": 1,
+                        "approved_by": "session:test",
+                        "timestamp": "2026-04-17T00:00:00+00:00",
+                    }
+                )
+                db_run.context_events = events
+                db.add(db_run)
+                db.commit()
+            finally:
+                db.close()
+
+            advance_response = await client.post(f"/api/v1/runs/{run_id}/phases/advance")
+            assert advance_response.status_code == 200
+            payload = advance_response.json()
+            assert payload["status"] == "transitioned"
+            assert payload["next_phase"] == "prd"
 
     try:
         anyio.run(exercise)

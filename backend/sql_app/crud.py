@@ -29,6 +29,95 @@ def _extract_latest_approval_event(
     return None
 
 
+def _append_blocked_transition_event(
+    events: list[dict],
+    *,
+    run_id: int,
+    phase: str,
+    attempted_action: str,
+    reason: str,
+    proposal_revision: int | None,
+) -> None:
+    events.append(
+        {
+            "event_type": "phase-transition-blocked",
+            "run_id": run_id,
+            "phase": phase,
+            "attempted_action": attempted_action,
+            "reason": reason,
+            "proposal_revision": proposal_revision,
+        }
+    )
+
+
+def evaluate_transition_decision_gate(
+    db_run: models.Run,
+    *,
+    phase: str,
+    attempted_action: str,
+) -> tuple[bool, str | None, int | None]:
+    phase_statuses = _safe_phase_statuses(db_run.phase_statuses)
+    proposal_artifacts = (
+        db_run.proposal_artifacts
+        if isinstance(db_run.proposal_artifacts, dict)
+        else {}
+    )
+    proposal = proposal_artifacts.get(phase)
+    if not isinstance(proposal, dict):
+        return False, "phase_proposal_missing", None
+    proposal_revision = proposal.get("revision")
+    normalized_revision = proposal_revision if isinstance(proposal_revision, int) else None
+
+    phase_state = phase_statuses.get(phase)
+    if db_run.status not in {"awaiting-approval", "initiated", "in-progress"}:
+        return False, "run_not_active", normalized_revision
+    if attempted_action == "advance" and phase_state != "approved":
+        if phase_state == "awaiting-approval":
+            return False, "explicit_user_decision_required", normalized_revision
+        return False, "phase_not_approved", normalized_revision
+    if attempted_action != "advance" and phase_state != "awaiting-approval":
+        return False, "phase_not_awaiting_approval", normalized_revision
+
+    approval_event = _extract_latest_approval_event(
+        events=list(db_run.context_events or []),
+        phase=phase,
+        revision=normalized_revision,
+    )
+    if approval_event is None:
+        return False, "explicit_user_decision_required", normalized_revision
+
+    if attempted_action == "advance":
+        if db_run.pending_approved_phase != phase:
+            return False, "phase_not_approved", normalized_revision
+
+    return True, None, normalized_revision
+
+
+def record_blocked_transition_attempt(
+    db: Session,
+    db_run: models.Run,
+    *,
+    phase: str,
+    attempted_action: str,
+    reason: str,
+    proposal_revision: int | None,
+):
+    events = list(db_run.context_events or [])
+    _append_blocked_transition_event(
+        events,
+        run_id=db_run.id,
+        phase=phase,
+        attempted_action=attempted_action,
+        reason=reason,
+        proposal_revision=proposal_revision,
+    )
+    db_run.context_events = events
+    db.add(db_run)
+    db.commit()
+    db.refresh(db_run)
+    return db_run
+
+
 def _summarize_feedback(feedback: str, limit: int = 160) -> str:
     compact = " ".join(feedback.split())
     if len(compact) <= limit:

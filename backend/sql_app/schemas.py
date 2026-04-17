@@ -24,6 +24,9 @@ class Run(RunBase):
     pending_approved_phase: str | None = None
     proposal_artifacts: dict[str, dict] = Field(default_factory=dict)
     current_phase_proposal: dict | None = None
+    awaiting_user_decision: bool = False
+    blocked_reason: str | None = None
+    can_advance_phase: bool = False
 
     class Config:
         orm_mode = True

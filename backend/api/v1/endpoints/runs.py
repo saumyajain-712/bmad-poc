@@ -95,6 +95,22 @@ def read_run(run_id: int, db: Session = Depends(get_db)):
         proposal_phase = expected_phase
     if proposal_phase is None:
         proposal_phase = current_phase or expected_phase
+    gate_allowed, gate_reason, _ = crud.evaluate_transition_decision_gate(
+        db_run,
+        phase=proposal_phase or "",
+        attempted_action="advance",
+    ) if proposal_phase else (True, None, None)
+    db_run.awaiting_user_decision = (
+        db_run.status == "awaiting-approval"
+        and proposal_phase is not None
+        and gate_reason == "explicit_user_decision_required"
+    )
+    db_run.blocked_reason = (
+        "explicit user decision required"
+        if db_run.awaiting_user_decision
+        else None
+    )
+    db_run.can_advance_phase = bool(gate_allowed and proposal_phase is not None)
     db_run.current_phase_proposal = (
         proposal_artifacts.get(proposal_phase) if proposal_phase else None
     )
@@ -734,16 +750,34 @@ def advance_run_phase(
             },
         )
 
-    phase_statuses = (
-        db_run.phase_statuses if isinstance(db_run.phase_statuses, dict) else {}
+    gate_allowed, gate_reason, proposal_revision = crud.evaluate_transition_decision_gate(
+        db_run,
+        phase=expected_phase,
+        attempted_action="advance",
     )
-    if db_run.pending_approved_phase != expected_phase or phase_statuses.get(expected_phase) != "approved":
+    if not gate_allowed:
+        crud.record_blocked_transition_attempt(
+            db=db,
+            db_run=db_run,
+            phase=expected_phase,
+            attempted_action="advance",
+            reason=gate_reason or "unknown",
+            proposal_revision=proposal_revision,
+        )
+        blocked_message = (
+            "Phase advancement is blocked: explicit user decision required."
+            if gate_reason == "explicit_user_decision_required"
+            else "Phase advancement is blocked due to invalid phase state."
+        )
         raise HTTPException(
             status_code=409,
             detail={
-                "error_code": "phase_not_approved",
-                "message": "Current phase must be explicitly approved before transition.",
-                "expected_phase": expected_phase,
+                "error_code": "phase_advancement_blocked",
+                "message": blocked_message,
+                "phase": expected_phase,
+                "reason": gate_reason,
+                "blocked": True,
+                "awaiting_user_decision": gate_reason == "explicit_user_decision_required",
             },
         )
 
