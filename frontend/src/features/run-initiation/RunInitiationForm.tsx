@@ -1,28 +1,56 @@
 import React, { useState } from 'react';
 import { createRun, submitRunClarifications } from '../../services/bmadService';
+import type { Run, RunTimelineEvent } from '../../services/bmadService';
+import RunTimeline from '../run-observability/RunTimeline';
 
-interface RunContextEvent {
-  event_type: string;
-  run_id?: number;
-  phase?: string;
-  context_source?: string;
-  context_version?: number;
-  old_status?: string;
-  new_status?: string;
-  reason?: string;
-  timestamp?: string;
-}
+type RunSnapshot = Pick<
+  Run,
+  | 'id'
+  | 'status'
+  | 'original_input'
+  | 'resolved_input_context'
+  | 'context_version'
+  | 'context_events'
+  | 'phase_statuses'
+  | 'phase_status_badges'
+>;
 
-interface RunSnapshot {
-  id: number;
-  status: string;
-  original_input: string;
-  resolved_input_context: string | null;
-  context_version: number;
-  context_events: RunContextEvent[];
-  phase_statuses?: Record<string, string>;
-  phase_status_badges?: Record<string, string>;
-}
+const areEventsEqual = (left: RunTimelineEvent, right: RunTimelineEvent): boolean => (
+  JSON.stringify(left) === JSON.stringify(right)
+);
+
+const mergeTimelineEvents = (
+  previousEvents: RunTimelineEvent[],
+  incomingEvents: RunTimelineEvent[]
+): RunTimelineEvent[] => {
+  if (previousEvents.length === 0) {
+    return incomingEvents;
+  }
+  if (incomingEvents.length < previousEvents.length) {
+    return incomingEvents;
+  }
+
+  const prefixMatches = previousEvents.every((event, index) => areEventsEqual(event, incomingEvents[index]));
+  if (!prefixMatches) {
+    return incomingEvents;
+  }
+
+  return [...previousEvents, ...incomingEvents.slice(previousEvents.length)];
+};
+
+const mergeRunSnapshot = (
+  previousSnapshot: RunSnapshot | null,
+  incomingRun: RunSnapshot
+): RunSnapshot => {
+  if (previousSnapshot === null) {
+    return incomingRun;
+  }
+
+  return {
+    ...incomingRun,
+    context_events: mergeTimelineEvents(previousSnapshot.context_events, incomingRun.context_events),
+  };
+};
 
 const RunInitiationForm: React.FC = () => {
   const [apiSpec, setApiSpec] = useState<string>('');
@@ -63,7 +91,7 @@ const RunInitiationForm: React.FC = () => {
       const response = await createRun(apiSpec);
       const newRun = response.run;
       setRunId(newRun.id);
-      setLatestRun(newRun);
+      setLatestRun((previous) => mergeRunSnapshot(previous, newRun));
       if (response.validation.is_complete) {
         setMessage(`Run initiated successfully! Run ID: ${newRun.id}, Status: ${newRun.status}`);
         setApiSpec('');
@@ -125,7 +153,7 @@ const RunInitiationForm: React.FC = () => {
       );
 
       const updatedRun = response.run;
-      setLatestRun(updatedRun);
+      setLatestRun((previous) => mergeRunSnapshot(previous, updatedRun));
       if (response.validation.is_complete) {
         setMessage(`Run resumed successfully! Run ID: ${updatedRun.id}, Status: ${updatedRun.status}`);
         setClarificationQuestions([]);
@@ -241,19 +269,7 @@ const RunInitiationForm: React.FC = () => {
               </ul>
             </>
           )}
-          {Array.isArray(latestRun.context_events) && latestRun.context_events.length > 0 && (
-            <ul style={{ marginBottom: 0 }}>
-              {latestRun.context_events.map((event, index) => (
-                <li key={`${event.event_type}-${event.phase}-${index}`}>
-                  {event.event_type}
-                  {event.phase ? ` (${event.phase})` : ''}
-                  {event.event_type === 'phase-status-changed'
-                    ? ` ${event.old_status} -> ${event.new_status} (${event.reason || 'n/a'})`
-                    : ` - source: ${event.context_source || 'n/a'}, version: ${event.context_version ?? 'n/a'}`}
-                </li>
-              ))}
-            </ul>
-          )}
+          <RunTimeline events={latestRun.context_events} />
         </section>
       )}
     </form>

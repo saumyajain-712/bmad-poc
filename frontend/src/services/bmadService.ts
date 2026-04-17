@@ -1,4 +1,22 @@
-interface Run {
+export interface RunTimelineEvent {
+    event_type: string;
+    run_id?: number;
+    phase?: string;
+    context_source?: string;
+    context_version?: number;
+    previous_phase?: string | null;
+    next_phase?: string;
+    trigger?: string;
+    timestamp?: string;
+    old_status?: string;
+    new_status?: string;
+    reason?: string;
+    step?: string;
+    error_summary?: string;
+    artifact?: Record<string, unknown>;
+}
+
+export interface Run {
     id: number;
     api_specification: string;
     status: string;
@@ -7,23 +25,7 @@ interface Run {
     original_input: string;
     resolved_input_context: string | null;
     context_version: number;
-    context_events: Array<{
-        event_type: string;
-        run_id?: number;
-        phase?: string;
-        context_source?: string;
-        context_version?: number;
-        previous_phase?: string | null;
-        next_phase?: string;
-        trigger?: string;
-        timestamp?: string;
-        old_status?: string;
-        new_status?: string;
-        reason?: string;
-        step?: string;
-        error_summary?: string;
-        artifact?: Record<string, unknown>;
-    }>;
+    context_events: RunTimelineEvent[];
     phase_statuses: Record<string, string>;
     phase_status_badges: Record<string, string>;
     proposal_artifacts: Record<string, Record<string, unknown>>;
@@ -79,4 +81,14 @@ export async function submitRunClarifications(
     }
 
     return response.json() as Promise<RunInitiationResponse>;
+}
+
+export async function fetchRun(runId: number): Promise<Run> {
+    const response = await fetch(`/api/v1/runs/${runId}`);
+
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return response.json() as Promise<Run>;
 }
