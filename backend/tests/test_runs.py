@@ -1577,3 +1577,119 @@ def test_resume_deduplicates_identical_calls_as_no_op(monkeypatch):
         anyio.run(exercise)
     finally:
         app.dependency_overrides.clear()
+
+
+def test_resume_approve_advances_when_phase_was_previously_approved(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            run_id = create_response.json()["run"]["id"]
+            start_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+            assert start_response.status_code == 200
+
+            db = TestingSessionLocal()
+            try:
+                db_run = db.query(models.Run).filter(models.Run.id == run_id).first()
+                phase_statuses = (
+                    dict(db_run.phase_statuses) if isinstance(db_run.phase_statuses, dict) else {}
+                )
+                phase_statuses["prd"] = "approved"
+                db_run.phase_statuses = phase_statuses
+                db_run.pending_approved_phase = "prd"
+                db_run.status = "awaiting-approval"
+                events = list(db_run.context_events or [])
+                events.append(
+                    {
+                        "event_type": "phase-approved",
+                        "run_id": run_id,
+                        "phase": "prd",
+                        "revision": 1,
+                        "approved_by": "session:test",
+                        "timestamp": "2026-04-17T00:00:00+00:00",
+                    }
+                )
+                db_run.context_events = events
+                db.add(db_run)
+                db.commit()
+            finally:
+                db.close()
+
+            resume_response = await client.post(
+                f"/api/v1/runs/{run_id}/resume",
+                json={
+                    "decision_type": "approve",
+                    "source_checkpoint": "approval-complete",
+                    "decision_token": "token-approve-1",
+                },
+            )
+            assert resume_response.status_code == 200
+            payload = resume_response.json()
+            assert payload["status"] == "in-progress"
+            assert payload["resumed_phase"] == "prd"
+            assert payload["no_op"] is False
+
+            run_response = await client.get(f"/api/v1/runs/{run_id}")
+            events = run_response.json()["context_events"]
+            assert any(
+                event.get("event_type") == "phase-transition"
+                and event.get("trigger") == "resume-approval"
+                and event.get("next_phase") == "prd"
+                for event in events
+            )
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_resume_modify_requires_awaiting_approval_state(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            run_id = create_response.json()["run"]["id"]
+
+            invalid_resume = await client.post(
+                f"/api/v1/runs/{run_id}/resume",
+                json={
+                    "decision_type": "modify",
+                    "source_checkpoint": "modify-complete",
+                    "decision_token": "token-modify-1",
+                },
+            )
+            assert invalid_resume.status_code == 409
+            assert invalid_resume.json()["detail"]["error_code"] == "phase_not_awaiting_approval"
+
+            start_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+            assert start_response.status_code == 200
+            valid_resume = await client.post(
+                f"/api/v1/runs/{run_id}/resume",
+                json={
+                    "decision_type": "modify",
+                    "source_checkpoint": "modify-complete",
+                    "decision_token": "token-modify-2",
+                },
+            )
+            assert valid_resume.status_code == 200
+            assert valid_resume.json()["no_op"] is True
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()

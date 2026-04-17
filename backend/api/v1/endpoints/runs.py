@@ -873,6 +873,7 @@ def resume_run_from_current_state(
         "phase_not_awaiting_approval",
         "phase_not_approved",
         "clarification_context_unresolved",
+        "invalid_phase_status_transition",
     }:
         raise HTTPException(
             status_code=409,

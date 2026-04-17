@@ -957,6 +957,30 @@ def _latest_resume_event(
     return None
 
 
+def _is_duplicate_resume_completion(
+    latest_completed: dict | None,
+    *,
+    decision_type: str,
+    source_checkpoint: str,
+    decision_token: str | None,
+    phase: str | None,
+    current_phase_index: int | None,
+) -> bool:
+    if not isinstance(latest_completed, dict):
+        return False
+    if latest_completed.get("decision_type") != decision_type:
+        return False
+    if latest_completed.get("source_checkpoint") != source_checkpoint:
+        return False
+    if latest_completed.get("phase") != phase:
+        return False
+    if latest_completed.get("current_phase_index") != current_phase_index:
+        return False
+    if decision_token is not None:
+        return latest_completed.get("decision_token") == decision_token
+    return latest_completed.get("decision_token") is None
+
+
 def _append_resume_event(
     events: list[dict],
     *,
@@ -968,6 +992,7 @@ def _append_resume_event(
     decision_token: str | None,
     reason: str | None,
     timestamp: str,
+    current_phase_index: int | None,
     no_op: bool = False,
 ) -> None:
     event = {
@@ -979,6 +1004,7 @@ def _append_resume_event(
         "decision_token": decision_token,
         "reason": reason,
         "timestamp": timestamp,
+        "current_phase_index": current_phase_index,
     }
     if no_op:
         event["no_op"] = True
@@ -1038,19 +1064,22 @@ def resume_run_orchestration(
 
     events = list(locked_run.context_events or [])
     latest_completed = _latest_resume_event(events, "resume-completed")
-    if (
-        isinstance(latest_completed, dict)
-        and latest_completed.get("decision_type") == normalized_decision
-        and latest_completed.get("source_checkpoint") == source_checkpoint
-        and latest_completed.get("decision_token") == decision_token
-    ):
-        snapshot = _build_restored_context_snapshot(locked_run)
-        return locked_run, snapshot, "resume_no_op"
-
     expected_phase = orchestration.get_next_phase(
         locked_run.current_phase_index if locked_run.current_phase_index is not None else -1
     )
     current_phase = locked_run.current_phase or expected_phase
+    current_phase_index = locked_run.current_phase_index
+    if _is_duplicate_resume_completion(
+        latest_completed,
+        decision_type=normalized_decision,
+        source_checkpoint=source_checkpoint,
+        decision_token=decision_token,
+        phase=current_phase,
+        current_phase_index=current_phase_index,
+    ):
+        snapshot = _build_restored_context_snapshot(locked_run)
+        return locked_run, snapshot, "resume_no_op"
+
     snapshot = _build_restored_context_snapshot(locked_run)
     phase_statuses = _safe_phase_statuses(locked_run.phase_statuses)
 
@@ -1064,6 +1093,7 @@ def resume_run_orchestration(
         decision_token=decision_token,
         reason=reason,
         timestamp=timestamp,
+        current_phase_index=current_phase_index,
     )
     _append_resume_event(
         events,
@@ -1075,6 +1105,7 @@ def resume_run_orchestration(
         decision_token=decision_token,
         reason=reason,
         timestamp=timestamp,
+        current_phase_index=current_phase_index,
     )
     _append_resume_event(
         events,
@@ -1086,6 +1117,7 @@ def resume_run_orchestration(
         decision_token=decision_token,
         reason=reason,
         timestamp=timestamp,
+        current_phase_index=current_phase_index,
     )
 
     conflict_reason: str | None = None
@@ -1107,8 +1139,8 @@ def resume_run_orchestration(
         if expected_phase is None:
             conflict_reason = "phase_sequence_complete"
         elif (
-            locked_run.status not in {"awaiting-approval", "in-progress"}
-            or phase_statuses.get(expected_phase) not in {"awaiting-approval", "in-progress"}
+            locked_run.status != "awaiting-approval"
+            or phase_statuses.get(expected_phase) != "awaiting-approval"
         ):
             conflict_reason = "phase_not_awaiting_approval"
         else:
@@ -1116,10 +1148,62 @@ def resume_run_orchestration(
     else:  # approve
         if expected_phase is None:
             conflict_reason = "phase_sequence_complete"
-        elif locked_run.current_phase != expected_phase:
+        elif (
+            phase_statuses.get(expected_phase) != "approved"
+            and locked_run.pending_approved_phase != expected_phase
+        ):
             conflict_reason = "phase_not_approved"
-        else:
+        elif locked_run.current_phase == expected_phase:
             no_op = True
+        else:
+            previous_phase = locked_run.current_phase
+            try:
+                _set_phase_status(
+                    phase_statuses=phase_statuses,
+                    phase=expected_phase,
+                    new_status="in-progress",
+                    events=events,
+                    run_id=locked_run.id,
+                    reason="resume-approval",
+                    timestamp=timestamp,
+                )
+                if previous_phase and previous_phase != expected_phase:
+                    _set_phase_status(
+                        phase_statuses=phase_statuses,
+                        phase=previous_phase,
+                        new_status="approved",
+                        events=events,
+                        run_id=locked_run.id,
+                        reason="resume-approval",
+                        timestamp=timestamp,
+                    )
+            except ValueError:
+                conflict_reason = "invalid_phase_status_transition"
+            else:
+                locked_run.phase_statuses = phase_statuses
+                next_index = (
+                    locked_run.current_phase_index
+                    if locked_run.current_phase_index is not None
+                    else -1
+                )
+                locked_run.current_phase = expected_phase
+                locked_run.current_phase_index = next_index + 1
+                locked_run.pending_approved_phase = None
+                locked_run.status = (
+                    "phase-sequence-complete"
+                    if expected_phase == orchestration.TERMINAL_PHASE
+                    else "in-progress"
+                )
+                events.append(
+                    {
+                        "event_type": "phase-transition",
+                        "previous_phase": previous_phase,
+                        "next_phase": expected_phase,
+                        "trigger": "resume-approval",
+                        "timestamp": timestamp,
+                    }
+                )
+                no_op = False
 
     if conflict_reason is not None:
         _append_resume_event(
@@ -1132,6 +1216,7 @@ def resume_run_orchestration(
             decision_token=decision_token,
             reason=conflict_reason,
             timestamp=timestamp,
+            current_phase_index=locked_run.current_phase_index,
         )
         locked_run.context_events = events
         db.add(locked_run)
@@ -1149,6 +1234,7 @@ def resume_run_orchestration(
         decision_token=decision_token,
         reason=reason,
         timestamp=timestamp,
+        current_phase_index=locked_run.current_phase_index,
         no_op=no_op,
     )
     locked_run.context_events = events

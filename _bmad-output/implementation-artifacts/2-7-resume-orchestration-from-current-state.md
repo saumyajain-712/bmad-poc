@@ -1,6 +1,6 @@
 # Story 2.7: Resume Orchestration from Current State
 
-Status: review
+Status: done
 
 ## Story
 
@@ -44,6 +44,16 @@ so that the workflow is seamless and developers can pick up where they left off.
   - [x] Negative: resume from completed run, resume with stale decision token/state, duplicate resume requests.
   - [x] Ordering: out-of-order event delivery and repeated websocket updates remain consistent in UI/API snapshots.
   - [x] Regression: verify Stories 2.3 to 2.6 behaviors remain intact after resume implementation.
+
+### Review Findings
+
+- [x] [Review][Patch] Resume endpoint does not continue orchestration after context restore [backend/sql_app/crud.py]
+- [x] [Review][Patch] Approve/modify resume branches resolve as no-op and never advance processing [backend/sql_app/crud.py]
+- [x] [Review][Patch] Positive resume tests are missing for `approve` and `modify` decision flows [backend/tests/test_runs.py]
+- [x] [Review][Patch] Resume idempotency dedupe key can collide across phases when token/checkpoint are reused or omitted [backend/sql_app/crud.py]
+- [x] [Review][Patch] Modify resume acceptance allows non-gated in-progress states [backend/sql_app/crud.py]
+- [x] [Review][Patch] Approve resume validation relies only on `current_phase == expected_phase` and may reject valid partially-updated state [backend/sql_app/crud.py]
+- [x] [Review][Patch] Commit range includes generated `__pycache__/*.pyc` artifacts that should be excluded from source changes [backend]
 
 ## Dev Notes
 
