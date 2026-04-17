@@ -866,6 +866,132 @@ def test_phase_advancement_allows_transition_with_recorded_decision(monkeypatch)
         app.dependency_overrides.clear()
 
 
+def test_phase_advancement_rejects_invalid_proposal_revision(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            start_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+            assert start_response.status_code == 200
+
+            db = TestingSessionLocal()
+            try:
+                db_run = db.query(models.Run).filter(models.Run.id == run_id).first()
+                proposal_artifacts = (
+                    dict(db_run.proposal_artifacts)
+                    if isinstance(db_run.proposal_artifacts, dict)
+                    else {}
+                )
+                prd_proposal = proposal_artifacts.get("prd")
+                if isinstance(prd_proposal, dict):
+                    prd_payload = dict(prd_proposal)
+                    prd_payload["revision"] = "invalid"
+                    proposal_artifacts["prd"] = prd_payload
+                    db_run.proposal_artifacts = proposal_artifacts
+                    db.add(db_run)
+                    db.commit()
+            finally:
+                db.close()
+
+            blocked_advance = await client.post(f"/api/v1/runs/{run_id}/phases/advance")
+            assert blocked_advance.status_code == 409
+            blocked_detail = blocked_advance.json()["detail"]
+            assert blocked_detail["error_code"] == "phase_advancement_blocked"
+            assert blocked_detail["reason"] == "phase_revision_invalid"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_phase_advancement_deduplicates_identical_blocked_events(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            start_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+            assert start_response.status_code == 200
+
+            first_blocked = await client.post(f"/api/v1/runs/{run_id}/phases/advance")
+            second_blocked = await client.post(f"/api/v1/runs/{run_id}/phases/advance")
+            assert first_blocked.status_code == 409
+            assert second_blocked.status_code == 409
+
+            run_response = await client.get(f"/api/v1/runs/{run_id}")
+            run_payload = run_response.json()
+            blocked_events = [
+                event
+                for event in run_payload["context_events"]
+                if event.get("event_type") == "phase-transition-blocked"
+                and event.get("phase") == "prd"
+                and event.get("reason") == "explicit_user_decision_required"
+            ]
+            assert len(blocked_events) == 1
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_approve_handles_non_dict_context_events(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            start_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+            assert start_response.status_code == 200
+
+            db = TestingSessionLocal()
+            try:
+                db_run = db.query(models.Run).filter(models.Run.id == run_id).first()
+                db_run.context_events = [None, "bad-event", {"event_type": "proposal_generated", "phase": "prd"}]
+                db.add(db_run)
+                db.commit()
+            finally:
+                db.close()
+
+            approve_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/approve")
+            assert approve_response.status_code == 200
+            assert approve_response.json()["status"] == "transitioned"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_approve_requires_awaiting_approval_phase_state(monkeypatch):
     app.dependency_overrides[get_db] = override_get_db
     mocked_orchestration = AsyncMock()

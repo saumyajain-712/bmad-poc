@@ -1,6 +1,6 @@
 # Story 2.5: Block Phase Advancement
 
-Status: review
+Status: done
 
 ## Story
 
@@ -43,6 +43,14 @@ so that human-in-the-loop governance is enforced at each critical juncture.
   - [x] Positive: no decision -> attempt to advance -> blocked and phase unchanged.
   - [x] Positive: explicit decision -> advancement/resume proceeds as expected.
   - [x] Negative/regression: stale proposal revision, invalid phase state, inactive run, malformed action input.
+
+### Review Findings
+
+- [x] [Review][Patch] Non-atomic decision gate allows stale-state phase advance [backend/api/v1/endpoints/runs.py:advance_run_phase, backend/sql_app/crud.py:apply_phase_transition]
+- [x] [Review][Patch] Gate may crash on malformed non-dict context events [backend/sql_app/crud.py:_extract_latest_approval_event]
+- [x] [Review][Patch] Missing proposal revision can match stale approval history [backend/sql_app/crud.py:evaluate_transition_decision_gate]
+- [x] [Review][Patch] Repeated blocked advances can cause unbounded duplicate blocked events [backend/sql_app/crud.py:record_blocked_transition_attempt]
+- [x] [Review][Defer] CRUD invariant missing for direct approve/transition mismatch [backend/sql_app/crud.py:approve_phase_and_transition] — deferred, pre-existing
 
 ## Dev Notes
 
@@ -173,5 +181,5 @@ gpt-5.3-codex-low
 
 ## Story Status
 
-**Status:** review  
+**Status:** done  
 **Notes:** Story implementation complete; explicit-decision gate and blocked-state observability are validated and ready for code review.

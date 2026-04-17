@@ -15,11 +15,13 @@ def _safe_phase_statuses(raw_statuses: object) -> dict[str, str]:
 
 
 def _extract_latest_approval_event(
-    events: list[dict],
+    events: list[object],
     phase: str,
     revision: int | None,
 ) -> dict | None:
     for event in reversed(events):
+        if not isinstance(event, dict):
+            continue
         if event.get("event_type") != "phase-approved":
             continue
         if event.get("phase") != phase:
@@ -67,6 +69,8 @@ def evaluate_transition_decision_gate(
         return False, "phase_proposal_missing", None
     proposal_revision = proposal.get("revision")
     normalized_revision = proposal_revision if isinstance(proposal_revision, int) else None
+    if normalized_revision is None:
+        return False, "phase_revision_invalid", None
 
     phase_state = phase_statuses.get(phase)
     if db_run.status not in {"awaiting-approval", "initiated", "in-progress"}:
@@ -93,6 +97,28 @@ def evaluate_transition_decision_gate(
     return True, None, normalized_revision
 
 
+def _is_duplicate_blocked_event(
+    events: list[object],
+    *,
+    phase: str,
+    attempted_action: str,
+    reason: str,
+    proposal_revision: int | None,
+) -> bool:
+    if not events:
+        return False
+    latest = events[-1]
+    if not isinstance(latest, dict):
+        return False
+    return (
+        latest.get("event_type") == "phase-transition-blocked"
+        and latest.get("phase") == phase
+        and latest.get("attempted_action") == attempted_action
+        and latest.get("reason") == reason
+        and latest.get("proposal_revision") == proposal_revision
+    )
+
+
 def record_blocked_transition_attempt(
     db: Session,
     db_run: models.Run,
@@ -102,20 +128,98 @@ def record_blocked_transition_attempt(
     reason: str,
     proposal_revision: int | None,
 ):
-    events = list(db_run.context_events or [])
+    locked_run = (
+        db.query(models.Run)
+        .filter(models.Run.id == db_run.id)
+        .with_for_update()
+        .first()
+    )
+    if locked_run is None:
+        return None
+    events = list(locked_run.context_events or [])
+    if _is_duplicate_blocked_event(
+        events,
+        phase=phase,
+        attempted_action=attempted_action,
+        reason=reason,
+        proposal_revision=proposal_revision,
+    ):
+        return locked_run
     _append_blocked_transition_event(
         events,
-        run_id=db_run.id,
+        run_id=locked_run.id,
         phase=phase,
         attempted_action=attempted_action,
         reason=reason,
         proposal_revision=proposal_revision,
     )
-    db_run.context_events = events
-    db.add(db_run)
+    locked_run.context_events = events
+    db.add(locked_run)
     db.commit()
-    db.refresh(db_run)
-    return db_run
+    db.refresh(locked_run)
+    return locked_run
+
+
+def apply_phase_transition_with_gate(
+    db: Session,
+    db_run: models.Run,
+    *,
+    attempted_phase: str,
+    previous_phase: str | None,
+    timestamp: str,
+    expected_current_phase_index: int,
+) -> tuple[models.Run | None, str | None, int | None]:
+    locked_run = (
+        db.query(models.Run)
+        .filter(models.Run.id == db_run.id)
+        .with_for_update()
+        .first()
+    )
+    if locked_run is None:
+        return None, "phase_transition_conflict", None
+
+    current_phase_index = (
+        locked_run.current_phase_index if locked_run.current_phase_index is not None else -1
+    )
+    if current_phase_index != expected_current_phase_index:
+        return locked_run, "phase_transition_conflict", None
+
+    gate_allowed, gate_reason, proposal_revision = evaluate_transition_decision_gate(
+        locked_run,
+        phase=attempted_phase,
+        attempted_action="advance",
+    )
+    if not gate_allowed:
+        return locked_run, gate_reason, proposal_revision
+
+    phase_statuses = _safe_phase_statuses(locked_run.phase_statuses)
+    phase_statuses[attempted_phase] = "in-progress"
+    if previous_phase and previous_phase != attempted_phase:
+        phase_statuses[previous_phase] = "approved"
+    locked_run.phase_statuses = phase_statuses
+    locked_run.current_phase = attempted_phase
+    locked_run.current_phase_index = current_phase_index + 1
+    locked_run.pending_approved_phase = None
+    locked_run.status = (
+        "phase-sequence-complete"
+        if attempted_phase == orchestration.TERMINAL_PHASE
+        else "in-progress"
+    )
+    events = list(locked_run.context_events or [])
+    events.append(
+        {
+            "event_type": "phase-transition",
+            "previous_phase": previous_phase,
+            "next_phase": attempted_phase,
+            "trigger": "approval",
+            "timestamp": timestamp,
+        }
+    )
+    locked_run.context_events = events
+    db.add(locked_run)
+    db.commit()
+    db.refresh(locked_run)
+    return locked_run, None, proposal_revision
 
 
 def _summarize_feedback(feedback: str, limit: int = 160) -> str:

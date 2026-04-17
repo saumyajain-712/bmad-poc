@@ -30,6 +30,21 @@ def _normalize_question_key(question: str) -> str:
     return " ".join(question.strip().split()).lower()
 
 
+def _event_matches_approval(
+    event: object,
+    *,
+    phase: str,
+    requested_revision: int | None,
+) -> bool:
+    if not isinstance(event, dict):
+        return False
+    if event.get("event_type") != "phase-approved":
+        return False
+    if event.get("phase") != phase:
+        return False
+    return requested_revision is None or event.get("revision") == requested_revision
+
+
 def _ensure_run_table_compatibility() -> None:
     inspector = inspect(engine)
     if "runs" not in inspector.get_table_names():
@@ -275,10 +290,10 @@ def start_run_phase(
             else None
         )
         prior_approval = any(
-            event.get("event_type") == "phase-approved"
-            and event.get("phase") == normalized_phase
-            and (
-                requested_revision is None or event.get("revision") == requested_revision
+            _event_matches_approval(
+                event,
+                phase=normalized_phase,
+                requested_revision=requested_revision,
             )
             for event in list(db_run.context_events or [])
         )
@@ -434,10 +449,10 @@ def approve_run_phase(
             else None
         )
         prior_approval = any(
-            event.get("event_type") == "phase-approved"
-            and event.get("phase") == normalized_phase
-            and (
-                requested_revision is None or event.get("revision") == requested_revision
+            _event_matches_approval(
+                event,
+                phase=normalized_phase,
+                requested_revision=requested_revision,
             )
             for event in list(db_run.context_events or [])
         )
@@ -750,12 +765,16 @@ def advance_run_phase(
             },
         )
 
-    gate_allowed, gate_reason, proposal_revision = crud.evaluate_transition_decision_gate(
-        db_run,
-        phase=expected_phase,
-        attempted_action="advance",
+    previous_phase = db_run.current_phase
+    updated_run, gate_reason, proposal_revision = crud.apply_phase_transition_with_gate(
+        db=db,
+        db_run=db_run,
+        attempted_phase=expected_phase,
+        previous_phase=previous_phase,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        expected_current_phase_index=current_phase_index,
     )
-    if not gate_allowed:
+    if gate_reason is not None:
         crud.record_blocked_transition_attempt(
             db=db,
             db_run=db_run,
@@ -780,16 +799,6 @@ def advance_run_phase(
                 "awaiting_user_decision": gate_reason == "explicit_user_decision_required",
             },
         )
-
-    previous_phase = db_run.current_phase
-    updated_run = crud.apply_phase_transition(
-        db=db,
-        db_run=db_run,
-        next_phase=expected_phase,
-        previous_phase=previous_phase,
-        timestamp=datetime.now(timezone.utc).isoformat(),
-        expected_current_phase_index=current_phase_index,
-    )
     if updated_run is None:
         raise HTTPException(
             status_code=409,

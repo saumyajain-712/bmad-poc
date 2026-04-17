@@ -10,3 +10,7 @@
 
 - Non-atomic approval/transition race in approve flow can persist partial approval state on transition conflict (`backend/api/v1/endpoints/runs.py`, `backend/sql_app/crud.py`) — deferred as pre-existing to current change set.
 - Clarification endpoint allows `initiation-failed` status but still hard-requires clarification questions, blocking retry path when there are no questions (`backend/api/v1/endpoints/runs.py`) — deferred as pre-existing to current change set.
+
+## Deferred from: code review of 2-5-block-phase-advancement.md (2026-04-17)
+
+- `approve_phase_and_transition` lacks a strict internal `phase == next_phase` invariant guard for direct CRUD invocation paths (`backend/sql_app/crud.py`) — deferred as pre-existing to current change set.
