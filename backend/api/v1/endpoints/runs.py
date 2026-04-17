@@ -539,6 +539,138 @@ def approve_run_phase(
 
 
 @router.post(
+    "/runs/{run_id}/phases/{phase}/modify",
+    response_model=schemas.PhaseModifyResponse,
+)
+def modify_run_phase_proposal(
+    run_id: int,
+    phase: str,
+    payload: schemas.PhaseModificationRequest,
+    db: Session = Depends(get_db),
+):
+    db_run = crud.get_run(db, run_id=run_id)
+    if db_run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    normalized_phase = phase.strip().lower()
+    if not orchestration.is_valid_phase(normalized_phase):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": "unsupported_phase",
+                "message": "Unsupported phase name.",
+            },
+        )
+
+    feedback = payload.feedback.strip()
+    if not feedback:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": "invalid_modify_payload",
+                "message": "Modification feedback must be non-empty.",
+            },
+        )
+
+    current_phase_index = (
+        db_run.current_phase_index if db_run.current_phase_index is not None else -1
+    )
+    updated_run, regenerated_proposal, modify_outcome = crud.modify_phase_proposal(
+        db=db,
+        db_run=db_run,
+        phase=normalized_phase,
+        feedback=feedback,
+        actor=payload.actor.strip() or "session:api",
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        expected_current_phase_index=current_phase_index,
+        expected_revision=payload.proposal_revision,
+    )
+
+    if modify_outcome == "phase_transition_conflict":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "phase_transition_conflict",
+                "message": "Phase modification conflicted with a concurrent update. Retry the request.",
+            },
+        )
+    if modify_outcome == "phase_sequence_complete":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "phase_sequence_complete",
+                "message": "Phase sequence is already complete.",
+            },
+        )
+    if modify_outcome == "phase_skip_not_allowed":
+        expected_phase = orchestration.get_next_phase(current_phase_index)
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "phase_skip_not_allowed",
+                "message": "Modify request must target the current review phase only.",
+                "expected_phase": expected_phase,
+                "requested_phase": normalized_phase,
+            },
+        )
+    if modify_outcome == "phase_not_awaiting_approval":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "phase_not_awaiting_approval",
+                "message": "Phase must be in awaiting-approval state before modify is accepted.",
+                "phase": normalized_phase,
+            },
+        )
+    if modify_outcome == "phase_proposal_missing":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "phase_proposal_missing",
+                "message": "Current phase proposal is required before modify can be accepted.",
+                "phase": normalized_phase,
+            },
+        )
+    if modify_outcome == "phase_revision_invalid":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "phase_revision_invalid",
+                "message": "Current phase proposal revision metadata is invalid.",
+                "phase": normalized_phase,
+            },
+        )
+    if modify_outcome == "stale_proposal_revision":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "stale_proposal_revision",
+                "message": "Modify request references an outdated proposal revision.",
+                "phase": normalized_phase,
+            },
+        )
+    if modify_outcome == "proposal_regeneration_failed":
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error_code": "proposal_regeneration_failed",
+                "message": "Modify request was recorded but proposal regeneration failed.",
+                "phase": normalized_phase,
+            },
+        )
+
+    return {
+        "run_id": updated_run.id,
+        "phase": normalized_phase,
+        "status": "modified-and-regenerated",
+        "proposal_status": regenerated_proposal["status"],
+        "proposal_generated_at": regenerated_proposal["generated_at"],
+        "proposal_revision": regenerated_proposal["revision"],
+        "previous_revision": regenerated_proposal["derived_from_revision"],
+    }
+
+
+@router.post(
     "/runs/{run_id}/phases/advance",
     response_model=schemas.PhaseAdvanceResponse,
 )

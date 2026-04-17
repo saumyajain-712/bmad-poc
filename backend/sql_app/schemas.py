@@ -85,3 +85,19 @@ class PhaseProposalResponse(BaseModel):
     run_id: int
     phase: str
     proposal: dict
+
+
+class PhaseModificationRequest(BaseModel):
+    feedback: str
+    actor: str = "session:api"
+    proposal_revision: int | None = None
+
+
+class PhaseModifyResponse(BaseModel):
+    run_id: int
+    phase: str
+    status: str
+    proposal_status: str
+    proposal_generated_at: str
+    proposal_revision: int
+    previous_revision: int

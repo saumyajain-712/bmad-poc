@@ -867,3 +867,113 @@ def test_approve_rejects_when_proposal_not_awaiting_approval(monkeypatch):
         anyio.run(exercise)
     finally:
         app.dependency_overrides.clear()
+
+
+def test_modify_regenerates_same_phase_and_preserves_approval_gate(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            start_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+            assert start_response.status_code == 200
+            assert start_response.json()["proposal_revision"] == 1
+
+            modify_response = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/modify",
+                json={
+                    "feedback": "Please include explicit non-functional requirements and timeline constraints.",
+                    "actor": "session:test",
+                    "proposal_revision": 1,
+                },
+            )
+            assert modify_response.status_code == 200
+            modify_payload = modify_response.json()
+            assert modify_payload["status"] == "modified-and-regenerated"
+            assert modify_payload["phase"] == "prd"
+            assert modify_payload["proposal_revision"] == 2
+            assert modify_payload["previous_revision"] == 1
+
+            run_response = await client.get(f"/api/v1/runs/{run_id}")
+            assert run_response.status_code == 200
+            run_payload = run_response.json()
+            assert run_payload["status"] == "awaiting-approval"
+            assert run_payload["current_phase"] is None
+            assert run_payload["current_phase_index"] == -1
+            assert run_payload["phase_statuses"]["prd"] == "awaiting-approval"
+            assert run_payload["proposal_artifacts"]["prd"]["revision"] == 2
+            assert "timeline constraints" in run_payload["proposal_artifacts"]["prd"]["content"].lower()
+            assert any(
+                event.get("event_type") == "proposal_modified_requested"
+                for event in run_payload["context_events"]
+            )
+            assert any(
+                event.get("event_type") == "proposal_regenerated"
+                for event in run_payload["context_events"]
+            )
+
+            approve_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/approve")
+            assert approve_response.status_code == 200
+            assert approve_response.json()["status"] == "transitioned"
+            assert approve_response.json()["next_phase"] == "prd"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_modify_rejects_missing_proposal_wrong_status_and_stale_revision(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            run_id = create_response.json()["run"]["id"]
+
+            missing_proposal_response = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/modify",
+                json={"feedback": "Improve scope coverage."},
+            )
+            assert missing_proposal_response.status_code == 409
+            assert missing_proposal_response.json()["detail"]["error_code"] == "phase_not_awaiting_approval"
+
+            start_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+            assert start_response.status_code == 200
+
+            stale_response = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/modify",
+                json={"feedback": "Use clearer acceptance criteria.", "proposal_revision": 0},
+            )
+            assert stale_response.status_code == 409
+            assert stale_response.json()["detail"]["error_code"] == "stale_proposal_revision"
+
+            approve_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/approve")
+            assert approve_response.status_code == 200
+
+            wrong_phase_state_response = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/modify",
+                json={"feedback": "Try to modify after phase transition."},
+            )
+            assert wrong_phase_state_response.status_code == 409
+            assert wrong_phase_state_response.json()["detail"]["error_code"] == "phase_skip_not_allowed"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()

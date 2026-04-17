@@ -29,6 +29,13 @@ def _extract_latest_approval_event(
     return None
 
 
+def _summarize_feedback(feedback: str, limit: int = 160) -> str:
+    compact = " ".join(feedback.split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: limit - 3].rstrip() + "..."
+
+
 def create_run(
     db: Session,
     run: schemas.RunCreate,
@@ -403,3 +410,149 @@ def approve_phase_and_transition(
     db.commit()
     db.refresh(locked_run)
     return locked_run, "transitioned"
+
+
+def modify_phase_proposal(
+    db: Session,
+    db_run: models.Run,
+    phase: str,
+    feedback: str,
+    actor: str,
+    timestamp: str,
+    expected_current_phase_index: int,
+    expected_revision: int | None = None,
+):
+    locked_run = (
+        db.query(models.Run)
+        .filter(models.Run.id == db_run.id)
+        .with_for_update()
+        .first()
+    )
+    if locked_run is None:
+        return db_run, None, "phase_transition_conflict"
+
+    current_phase_index = (
+        locked_run.current_phase_index if locked_run.current_phase_index is not None else -1
+    )
+    if current_phase_index != expected_current_phase_index:
+        return locked_run, None, "phase_transition_conflict"
+
+    expected_phase = orchestration.get_next_phase(current_phase_index)
+    if expected_phase is None:
+        return locked_run, None, "phase_sequence_complete"
+    if phase != expected_phase:
+        return locked_run, None, "phase_skip_not_allowed"
+
+    phase_statuses = _safe_phase_statuses(locked_run.phase_statuses)
+    if (
+        locked_run.status not in {"initiated", "in-progress", "awaiting-approval"}
+        or phase_statuses.get(phase) != "awaiting-approval"
+    ):
+        return locked_run, None, "phase_not_awaiting_approval"
+
+    proposal_artifacts = (
+        dict(locked_run.proposal_artifacts)
+        if isinstance(locked_run.proposal_artifacts, dict)
+        else {}
+    )
+    proposal = proposal_artifacts.get(phase)
+    if not isinstance(proposal, dict):
+        return locked_run, None, "phase_proposal_missing"
+
+    current_revision = proposal.get("revision")
+    if not isinstance(current_revision, int):
+        return locked_run, None, "phase_revision_invalid"
+    if expected_revision is not None and expected_revision != current_revision:
+        return locked_run, None, "stale_proposal_revision"
+
+    prior_history = proposal.get("modification_history")
+    modification_history = list(prior_history) if isinstance(prior_history, list) else []
+    feedback_summary = _summarize_feedback(feedback)
+    next_revision = current_revision + 1
+    modification_record = {
+        "requested_at": timestamp,
+        "requested_by": actor,
+        "feedback_text": feedback,
+        "feedback_summary": feedback_summary,
+        "source_revision": current_revision,
+        "regenerated_revision": next_revision,
+    }
+
+    events = list(locked_run.context_events or [])
+    events.append(
+        {
+            "event_type": "proposal_modified_requested",
+            "run_id": locked_run.id,
+            "phase": phase,
+            "revision": current_revision,
+            "actor": actor,
+            "feedback_summary": feedback_summary,
+            "timestamp": timestamp,
+        }
+    )
+
+    phase_statuses[phase] = "in-progress"
+    locked_run.phase_statuses = phase_statuses
+    locked_run.status = "in-progress"
+
+    merged_content = (
+        f"{proposal.get('content', '').strip()}\n\n"
+        f"Modification request:\n{feedback.strip()}"
+    ).strip()
+    try:
+        regenerated_proposal = orchestration.build_phase_proposal_payload(
+            run_id=locked_run.id,
+            phase=phase,
+            phase_output=merged_content,
+            context_version=locked_run.context_version,
+            revision=next_revision,
+        )
+    except Exception as exc:
+        events.append(
+            {
+                "event_type": "proposal_generation_failed",
+                "phase": phase,
+                "step": "modify-regenerate-proposal",
+                "error_summary": str(exc),
+                "diagnostics": {
+                    "source_revision": current_revision,
+                    "feedback_summary": feedback_summary,
+                },
+            }
+        )
+        phase_statuses[phase] = "awaiting-approval"
+        locked_run.phase_statuses = phase_statuses
+        locked_run.status = "awaiting-approval"
+        locked_run.context_events = events
+        db.add(locked_run)
+        db.commit()
+        db.refresh(locked_run)
+        return locked_run, None, "proposal_regeneration_failed"
+
+    regenerated_proposal["derived_from_revision"] = current_revision
+    regenerated_proposal["modification_feedback_summary"] = feedback_summary
+    modification_history.append(modification_record)
+    regenerated_proposal["modification_history"] = modification_history
+    proposal_artifacts[phase] = regenerated_proposal
+    locked_run.proposal_artifacts = proposal_artifacts
+
+    phase_statuses[phase] = "awaiting-approval"
+    locked_run.phase_statuses = phase_statuses
+    locked_run.status = "awaiting-approval"
+    events.append(
+        {
+            "event_type": "proposal_regenerated",
+            "run_id": locked_run.id,
+            "phase": phase,
+            "revision": regenerated_proposal["revision"],
+            "derived_from_revision": current_revision,
+            "actor": actor,
+            "timestamp": timestamp,
+        }
+    )
+    locked_run.context_events = events
+
+    db.add(locked_run)
+    db.commit()
+    db.refresh(locked_run)
+    return locked_run, regenerated_proposal, "regenerated"

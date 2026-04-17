@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-10T12:50:40.1627074+05:30
-last_updated: 2026-04-14T12:40:00+05:30
+last_updated: 2026-04-17T16:40:00+05:30
 project: bmad-poc
 project_key: NOKEY
 tracking_system: file-system
@@ -52,8 +52,8 @@ development_status:
   epic-2: in-progress
   2-1-execute-bmad-phases-in-sequence: in-progress
   2-2-generate-phase-proposal-artifact: done
-  2-3-approve-phase-proposal: in-progress
-  2-4-modify-and-regenerate-phase-proposal: backlog
+  2-3-approve-phase-proposal: done
+  2-4-modify-and-regenerate-phase-proposal: review
   2-5-block-phase-advancement: backlog
   2-6-maintain-per-phase-status: backlog
   2-7-resume-orchestration-from-current-state: backlog

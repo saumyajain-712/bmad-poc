@@ -216,3 +216,59 @@ def test_phase_sequence_progression_integration(monkeypatch, tmp_path):
         anyio.run(exercise_flow)
     finally:
         app.dependency_overrides.clear()
+
+
+def test_modify_then_approve_flow_integration(monkeypatch, tmp_path):
+    db_file = tmp_path / "integration_test_modify_regenerate.db"
+    test_db_url = f"sqlite:///{db_file}"
+
+    engine = create_engine(test_db_url, connect_args={"check_same_thread": False})
+    testing_session_local = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base.metadata.create_all(bind=engine)
+
+    def override_get_db():
+        db = testing_session_local()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    mocked_orchestration = AsyncMock(return_value={"message": "BMAD run initiated successfully"})
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+    app.dependency_overrides[get_db] = override_get_db
+
+    async def exercise_flow():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            start_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+            assert start_response.status_code == 200
+
+            modify_response = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/modify",
+                json={"feedback": "Add clear security and performance expectations."},
+            )
+            assert modify_response.status_code == 200
+            assert modify_response.json()["proposal_revision"] == 2
+
+            approve_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/approve")
+            assert approve_response.status_code == 200
+            assert approve_response.json()["status"] == "transitioned"
+
+            run_response = await client.get(f"/api/v1/runs/{run_id}")
+            assert run_response.status_code == 200
+            payload = run_response.json()
+            assert payload["current_phase"] == "prd"
+            assert payload["phase_statuses"]["prd"] == "in-progress"
+            assert payload["phase_statuses"]["architecture"] == "pending"
+
+    try:
+        anyio.run(exercise_flow)
+    finally:
+        app.dependency_overrides.clear()
