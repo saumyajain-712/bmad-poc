@@ -66,4 +66,23 @@ describe('RunTimeline', () => {
     expect(rows[0]).toHaveTextContent('context-resolved');
     expect(rows[1]).toHaveTextContent('phase-approved');
   });
+
+  it('renders fallback labels when timestamp or phase are missing', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: 'context-resolved',
+            context_version: 1,
+          },
+        ]}
+      />
+    );
+
+    const row = screen.getByRole('listitem');
+    expect(row).toHaveTextContent('timestamp unavailable');
+    expect(row).toHaveTextContent('unscoped');
+    expect(row).toHaveTextContent('context-resolved');
+    expect(row).toHaveTextContent('source: n/a, version: 1');
+  });
 });

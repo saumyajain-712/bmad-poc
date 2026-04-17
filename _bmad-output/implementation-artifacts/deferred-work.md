@@ -18,3 +18,9 @@
 ## Deferred from: code review of 2-6-maintain-per-phase-status.md (2026-04-17)
 
 - Repeated phase-start requests can regenerate proposal revisions and append additional events during retry/double-submit paths (`backend/api/v1/endpoints/runs.py`, `backend/sql_app/crud.py`) — deferred as pre-existing to current change set.
+
+## Deferred from: code review of 3-1-view-agent-actions-timeline.md (2026-04-17)
+
+- Committed runtime/build artifacts in review range (`backend/sql_app.db`, `sql_app.db`, `__pycache__`, test cache outputs) — deferred as pre-existing to current change set.
+- Clarification paused state can be non-actionable when questions array is empty in `RunInitiationForm` — deferred as pre-existing to current change set.
+- AC2 real-time update strategy (polling/SSE while timeline is open) deferred by product decision: Real-time polling/SSE is out of scope for POC; timeline updates on user action are sufficient.

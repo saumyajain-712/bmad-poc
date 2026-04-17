@@ -15,8 +15,52 @@ type RunSnapshot = Pick<
   | 'phase_status_badges'
 >;
 
+const sortKeysDeep = (value: unknown): unknown => {
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(sortKeysDeep);
+  }
+  const obj = value as Record<string, unknown>;
+  const sorted: Record<string, unknown> = {};
+  for (const key of Object.keys(obj).sort()) {
+    sorted[key] = sortKeysDeep(obj[key]);
+  }
+  return sorted;
+};
+
+const artifactsEqual = (
+  left: Record<string, unknown> | undefined,
+  right: Record<string, unknown> | undefined
+): boolean => {
+  if (left === right) {
+    return true;
+  }
+  if (left === undefined || right === undefined) {
+    return false;
+  }
+  return JSON.stringify(sortKeysDeep(left)) === JSON.stringify(sortKeysDeep(right));
+};
+
+const optionalEqual = (a: string | null | undefined, b: string | null | undefined): boolean => a === b;
+
 const areEventsEqual = (left: RunTimelineEvent, right: RunTimelineEvent): boolean => (
-  JSON.stringify(left) === JSON.stringify(right)
+  left.event_type === right.event_type
+  && left.run_id === right.run_id
+  && optionalEqual(left.phase, right.phase)
+  && optionalEqual(left.context_source, right.context_source)
+  && left.context_version === right.context_version
+  && optionalEqual(left.previous_phase, right.previous_phase)
+  && optionalEqual(left.next_phase, right.next_phase)
+  && optionalEqual(left.trigger, right.trigger)
+  && optionalEqual(left.timestamp, right.timestamp)
+  && optionalEqual(left.old_status, right.old_status)
+  && optionalEqual(left.new_status, right.new_status)
+  && optionalEqual(left.reason, right.reason)
+  && optionalEqual(left.step, right.step)
+  && optionalEqual(left.error_summary, right.error_summary)
+  && artifactsEqual(left.artifact, right.artifact)
 );
 
 const mergeTimelineEvents = (

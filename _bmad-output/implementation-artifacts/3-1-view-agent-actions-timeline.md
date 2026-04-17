@@ -1,6 +1,6 @@
 # Story 3.1: View Agent Actions Timeline
 
-Status: review
+Status: done
 
 ## Story
 
@@ -31,6 +31,14 @@ so that I can observe the AI's reasoning process and track progress in real-time
 - [x] Add tests for timeline rendering and ordering (AC: 1, 2)
   - [x] Frontend test: timeline renders known ordered events and appends new ones.
   - [x] Backend test (only if contract changed): run endpoint returns stable timeline event schema.
+
+### Review Findings
+
+- [x] [Review][Defer] AC2 real-time update strategy is missing — Current implementation updates timeline only on submit/clarification actions and does not poll or subscribe while open; deferred by product decision: Real-time polling/SSE is out of scope for POC; timeline updates on user action are sufficient.
+- [x] [Review][Patch] Merge logic is brittle due to `JSON.stringify` equality and full replacement fallback [frontend/src/features/run-initiation/RunInitiationForm.tsx:22] — fixed: field-wise equality with stable artifact comparison
+- [x] [Review][Patch] Add regression tests for timestamp/phase fallback rendering in timeline rows [frontend/src/features/run-observability/__tests__/RunTimeline.test.tsx:6] — fixed
+- [x] [Review][Defer] Committed runtime/build artifacts in review range [backend/sql_app.db:1] — deferred, pre-existing
+- [x] [Review][Defer] Clarification paused state can be non-actionable when questions array is empty [frontend/src/features/run-initiation/RunInitiationForm.tsx:153] — deferred, pre-existing
 
 ## Dev Notes
 
@@ -142,3 +150,4 @@ Codex 5.3
 ### Change Log
 
 - 2026-04-17: Implemented Story 3.1 timeline UI, typed service contracts, append-only event handling, and timeline tests; validated with frontend and backend test runs plus frontend lint.
+- 2026-04-18: Code review follow-up — stable field-wise timeline event equality (replacing `JSON.stringify`), regression test for missing timestamp/phase fallbacks; story marked done.
