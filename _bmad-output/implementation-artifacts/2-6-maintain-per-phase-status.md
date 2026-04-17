@@ -45,6 +45,12 @@ so that developers have clear visibility into the current state of the BMAD run.
   - [x] Negative/regression: invalid transitions, repeated same-state updates, stale update ordering, failed phase branch.
   - [x] Regression suite covering Stories 2.1 to 2.5 governance guarantees.
 
+### Review Findings
+
+- [x] [Review][Patch] Proposal generation failure does not set canonical phase status to `failed` [backend/sql_app/crud.py:520]
+- [x] [Review][Patch] Compiled Python bytecode artifacts were committed in the reviewed change set [backend/sql_app/__pycache__/crud.cpython-311.pyc:1]
+- [x] [Review][Defer] Repeated phase-start requests can regenerate proposal revisions and append additional events when retries occur [backend/api/v1/endpoints/runs.py:234] — deferred, pre-existing
+
 ## Dev Notes
 
 ### Epic Context
@@ -179,5 +185,5 @@ gpt-5.3-codex-low
 
 ## Story Status
 
-**Status:** review  
-**Notes:** Implementation completed and validated; ready for code review.
+**Status:** done  
+**Notes:** Review patches applied and validated; no unresolved story-scoped patch items remain.

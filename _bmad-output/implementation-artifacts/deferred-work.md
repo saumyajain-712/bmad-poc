@@ -14,3 +14,7 @@
 ## Deferred from: code review of 2-5-block-phase-advancement.md (2026-04-17)
 
 - `approve_phase_and_transition` lacks a strict internal `phase == next_phase` invariant guard for direct CRUD invocation paths (`backend/sql_app/crud.py`) — deferred as pre-existing to current change set.
+
+## Deferred from: code review of 2-6-maintain-per-phase-status.md (2026-04-17)
+
+- Repeated phase-start requests can regenerate proposal revisions and append additional events during retry/double-submit paths (`backend/api/v1/endpoints/runs.py`, `backend/sql_app/crud.py`) — deferred as pre-existing to current change set.

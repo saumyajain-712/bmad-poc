@@ -501,8 +501,16 @@ def test_start_phase_returns_graceful_failure_when_proposal_generation_fails(mon
             run_response = await client.get(f"/api/v1/runs/{run_id}")
             assert run_response.status_code == 200
             run_payload = run_response.json()
+            assert run_payload["phase_statuses"]["prd"] == "failed"
             assert any(
                 event.get("event_type") == "proposal_generation_failed"
+                for event in run_payload["context_events"]
+            )
+            assert any(
+                event.get("event_type") == "phase-status-changed"
+                and event.get("phase") == "prd"
+                and event.get("new_status") == "failed"
+                and event.get("reason") == "proposal-generation-failed"
                 for event in run_payload["context_events"]
             )
 

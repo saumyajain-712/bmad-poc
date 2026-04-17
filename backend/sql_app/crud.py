@@ -523,7 +523,16 @@ def record_proposal_generation_failure(
     phase: str,
     error_summary: str,
 ):
+    phase_statuses = _safe_phase_statuses(db_run.phase_statuses)
     events = list(db_run.context_events or [])
+    _set_phase_status(
+        phase_statuses=phase_statuses,
+        phase=phase,
+        new_status="failed",
+        events=events,
+        run_id=db_run.id,
+        reason="proposal-generation-failed",
+    )
     events.append(
         {
             "event_type": "proposal_generation_failed",
@@ -532,6 +541,7 @@ def record_proposal_generation_failure(
             "error_summary": error_summary,
         }
     )
+    db_run.phase_statuses = phase_statuses
     db_run.context_events = events
     db.add(db_run)
     db.commit()
