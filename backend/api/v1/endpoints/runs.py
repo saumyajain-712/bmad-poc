@@ -126,6 +126,7 @@ def read_run(run_id: int, db: Session = Depends(get_db)):
         else None
     )
     db_run.can_advance_phase = bool(gate_allowed and proposal_phase is not None)
+    db_run.phase_status_badges = orchestration.status_badge_map()
     db_run.current_phase_proposal = (
         proposal_artifacts.get(proposal_phase) if proposal_phase else None
     )
@@ -546,6 +547,15 @@ def approve_run_phase(
             detail={
                 "error_code": "phase_sequence_complete",
                 "message": "Phase sequence is already complete.",
+            },
+        )
+    if approval_outcome == "invalid_phase_status_transition":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "invalid_phase_status_transition",
+                "message": "Phase status transition violates canonical lifecycle.",
+                "phase": normalized_phase,
             },
         )
 

@@ -1,9 +1,26 @@
 PHASE_SEQUENCE: tuple[str, ...] = ("prd", "architecture", "stories", "code")
 TERMINAL_PHASE = PHASE_SEQUENCE[-1]
+PHASE_STATUSES: tuple[str, ...] = (
+    "pending",
+    "in-progress",
+    "awaiting-approval",
+    "approved",
+    "failed",
+)
+TERMINAL_PHASE_STATUSES: tuple[str, ...] = ("approved", "failed")
 
 
 def initialize_phase_statuses() -> dict[str, str]:
     return {phase: "pending" for phase in PHASE_SEQUENCE}
+
+
+def status_badge_map() -> dict[str, str]:
+    # UI-safe deterministic status mapping sourced from canonical backend status.
+    return {status: status for status in PHASE_STATUSES}
+
+
+def is_valid_phase_status(value: str) -> bool:
+    return value in PHASE_STATUSES
 
 
 def get_next_phase(current_phase_index: int) -> str | None:

@@ -1373,3 +1373,67 @@ def test_modify_returns_502_and_persists_failure_event_on_regeneration_error(mon
         anyio.run(exercise)
     finally:
         app.dependency_overrides.clear()
+
+
+def test_run_detail_exposes_phase_status_badge_map(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            run_id = create_response.json()["run"]["id"]
+            run_response = await client.get(f"/api/v1/runs/{run_id}")
+            assert run_response.status_code == 200
+            payload = run_response.json()
+            assert payload["phase_status_badges"]["pending"] == "pending"
+            assert payload["phase_status_badges"]["in-progress"] == "in-progress"
+            assert payload["phase_status_badges"]["awaiting-approval"] == "awaiting-approval"
+            assert payload["phase_status_badges"]["approved"] == "approved"
+            assert payload["phase_status_badges"]["failed"] == "failed"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_phase_status_change_events_include_transition_metadata(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            run_id = create_response.json()["run"]["id"]
+            start_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+            assert start_response.status_code == 200
+            approve_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/approve")
+            assert approve_response.status_code == 200
+
+            run_response = await client.get(f"/api/v1/runs/{run_id}")
+            events = run_response.json()["context_events"]
+            status_events = [
+                event for event in events if event.get("event_type") == "phase-status-changed"
+            ]
+            assert len(status_events) >= 3
+            assert all(event.get("run_id") == run_id for event in status_events)
+            assert all("phase" in event for event in status_events)
+            assert all("old_status" in event for event in status_events)
+            assert all("new_status" in event for event in status_events)
+            assert all("reason" in event for event in status_events)
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()

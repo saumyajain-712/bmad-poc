@@ -4,14 +4,98 @@ from . import models, schemas
 from backend.services import orchestration
 
 
+STATUS_TRANSITIONS: dict[str, set[str]] = {
+    "pending": {"in-progress", "awaiting-approval", "failed"},
+    "in-progress": {"awaiting-approval", "approved", "failed"},
+    "awaiting-approval": {"in-progress", "approved", "failed"},
+    "approved": {"in-progress", "failed"},
+    "failed": set(),
+}
+
+
 def _safe_phase_statuses(raw_statuses: object) -> dict[str, str]:
     if not isinstance(raw_statuses, dict):
         return orchestration.initialize_phase_statuses()
     sanitized: dict[str, str] = {}
     for phase in orchestration.PHASE_SEQUENCE:
         value = raw_statuses.get(phase)
-        sanitized[phase] = value if isinstance(value, str) else "pending"
+        sanitized[phase] = (
+            value
+            if isinstance(value, str) and orchestration.is_valid_phase_status(value)
+            else "pending"
+        )
     return sanitized
+
+
+def _can_transition_phase_status(old_status: str, new_status: str) -> bool:
+    if old_status == new_status:
+        return True
+    return new_status in STATUS_TRANSITIONS.get(old_status, set())
+
+
+def _append_phase_status_change_event(
+    events: list[dict],
+    *,
+    run_id: int,
+    phase: str,
+    old_status: str,
+    new_status: str,
+    reason: str,
+    timestamp: str | None = None,
+) -> None:
+    if old_status == new_status:
+        return
+    if events:
+        latest = events[-1]
+        if (
+            isinstance(latest, dict)
+            and latest.get("event_type") == "phase-status-changed"
+            and latest.get("run_id") == run_id
+            and latest.get("phase") == phase
+            and latest.get("old_status") == old_status
+            and latest.get("new_status") == new_status
+            and latest.get("reason") == reason
+        ):
+            return
+    event = {
+        "event_type": "phase-status-changed",
+        "run_id": run_id,
+        "phase": phase,
+        "old_status": old_status,
+        "new_status": new_status,
+        "reason": reason,
+    }
+    if timestamp is not None:
+        event["timestamp"] = timestamp
+    events.append(event)
+
+
+def _set_phase_status(
+    *,
+    phase_statuses: dict[str, str],
+    phase: str,
+    new_status: str,
+    events: list[dict],
+    run_id: int,
+    reason: str,
+    timestamp: str | None = None,
+) -> str:
+    old_status = phase_statuses.get(phase, "pending")
+    if not _can_transition_phase_status(old_status, new_status):
+        raise ValueError(
+            f"invalid_phase_status_transition:{phase}:{old_status}->{new_status}"
+        )
+    phase_statuses[phase] = new_status
+    _append_phase_status_change_event(
+        events,
+        run_id=run_id,
+        phase=phase,
+        old_status=old_status,
+        new_status=new_status,
+        reason=reason,
+        timestamp=timestamp,
+    )
+    return old_status
 
 
 def _extract_latest_approval_event(
@@ -193,9 +277,29 @@ def apply_phase_transition_with_gate(
         return locked_run, gate_reason, proposal_revision
 
     phase_statuses = _safe_phase_statuses(locked_run.phase_statuses)
-    phase_statuses[attempted_phase] = "in-progress"
-    if previous_phase and previous_phase != attempted_phase:
-        phase_statuses[previous_phase] = "approved"
+    events = list(locked_run.context_events or [])
+    try:
+        _set_phase_status(
+            phase_statuses=phase_statuses,
+            phase=attempted_phase,
+            new_status="in-progress",
+            events=events,
+            run_id=locked_run.id,
+            reason="phase-transition",
+            timestamp=timestamp,
+        )
+        if previous_phase and previous_phase != attempted_phase:
+            _set_phase_status(
+                phase_statuses=phase_statuses,
+                phase=previous_phase,
+                new_status="approved",
+                events=events,
+                run_id=locked_run.id,
+                reason="phase-transition",
+                timestamp=timestamp,
+            )
+    except ValueError:
+        return locked_run, "invalid_phase_status_transition", proposal_revision
     locked_run.phase_statuses = phase_statuses
     locked_run.current_phase = attempted_phase
     locked_run.current_phase_index = current_phase_index + 1
@@ -205,7 +309,6 @@ def apply_phase_transition_with_gate(
         if attempted_phase == orchestration.TERMINAL_PHASE
         else "in-progress"
     )
-    events = list(locked_run.context_events or [])
     events.append(
         {
             "event_type": "phase-transition",
@@ -382,12 +485,18 @@ def generate_phase_proposal(
     proposal_artifacts[phase] = proposal_payload
     db_run.proposal_artifacts = proposal_artifacts
 
+    events = list(db_run.context_events or [])
     phase_statuses = _safe_phase_statuses(db_run.phase_statuses)
-    phase_statuses[phase] = "awaiting-approval"
+    _set_phase_status(
+        phase_statuses=phase_statuses,
+        phase=phase,
+        new_status="awaiting-approval",
+        events=events,
+        run_id=db_run.id,
+        reason="proposal-generated",
+    )
     db_run.phase_statuses = phase_statuses
     db_run.status = "awaiting-approval"
-
-    events = list(db_run.context_events or [])
     events.append(
         {
             "event_type": "proposal_generated",
@@ -441,10 +550,17 @@ def approve_phase_for_transition(
     )
     if already_approved:
         return db_run
-    phase_statuses[phase] = "approved"
+    events = list(db_run.context_events or [])
+    _set_phase_status(
+        phase_statuses=phase_statuses,
+        phase=phase,
+        new_status="approved",
+        events=events,
+        run_id=db_run.id,
+        reason="phase-approved",
+    )
     db_run.phase_statuses = phase_statuses
     db_run.pending_approved_phase = phase
-    events = list(db_run.context_events or [])
     events.append(
         {
             "event_type": "phase-awaiting-transition",
@@ -476,9 +592,26 @@ def apply_phase_transition(
         return None
 
     phase_statuses = _safe_phase_statuses(db_run.phase_statuses)
-    phase_statuses[next_phase] = "in-progress"
+    events = list(db_run.context_events or [])
+    _set_phase_status(
+        phase_statuses=phase_statuses,
+        phase=next_phase,
+        new_status="in-progress",
+        events=events,
+        run_id=db_run.id,
+        reason="phase-transition",
+        timestamp=timestamp,
+    )
     if previous_phase and previous_phase != next_phase:
-        phase_statuses[previous_phase] = "approved"
+        _set_phase_status(
+            phase_statuses=phase_statuses,
+            phase=previous_phase,
+            new_status="approved",
+            events=events,
+            run_id=db_run.id,
+            reason="phase-transition",
+            timestamp=timestamp,
+        )
     db_run.phase_statuses = phase_statuses
     db_run.current_phase = next_phase
     current_phase_index = (
@@ -491,7 +624,6 @@ def apply_phase_transition(
         if next_phase == orchestration.TERMINAL_PHASE
         else "in-progress"
     )
-    events = list(db_run.context_events or [])
     events.append(
         {
             "event_type": "phase-transition",
@@ -562,7 +694,18 @@ def approve_phase_and_transition(
     if next_phase is None:
         return locked_run, "phase_sequence_complete"
 
-    phase_statuses[phase] = "approved"
+    try:
+        _set_phase_status(
+            phase_statuses=phase_statuses,
+            phase=phase,
+            new_status="approved",
+            events=events,
+            run_id=locked_run.id,
+            reason="phase-approved",
+            timestamp=timestamp,
+        )
+    except ValueError:
+        return locked_run, "invalid_phase_status_transition"
     locked_run.phase_statuses = phase_statuses
     locked_run.pending_approved_phase = phase
     events.append(
@@ -577,9 +720,28 @@ def approve_phase_and_transition(
         }
     )
     previous_phase = locked_run.current_phase
-    phase_statuses[next_phase] = "in-progress"
-    if previous_phase and previous_phase != next_phase:
-        phase_statuses[previous_phase] = "approved"
+    try:
+        _set_phase_status(
+            phase_statuses=phase_statuses,
+            phase=next_phase,
+            new_status="in-progress",
+            events=events,
+            run_id=locked_run.id,
+            reason="phase-transition",
+            timestamp=timestamp,
+        )
+        if previous_phase and previous_phase != next_phase:
+            _set_phase_status(
+                phase_statuses=phase_statuses,
+                phase=previous_phase,
+                new_status="approved",
+                events=events,
+                run_id=locked_run.id,
+                reason="phase-transition",
+                timestamp=timestamp,
+            )
+    except ValueError:
+        return locked_run, "invalid_phase_status_transition"
     locked_run.phase_statuses = phase_statuses
     locked_run.current_phase = next_phase
     locked_run.current_phase_index = current_phase_index + 1
@@ -684,7 +846,15 @@ def modify_phase_proposal(
         }
     )
 
-    phase_statuses[phase] = "in-progress"
+    _set_phase_status(
+        phase_statuses=phase_statuses,
+        phase=phase,
+        new_status="in-progress",
+        events=events,
+        run_id=locked_run.id,
+        reason="proposal-modification-requested",
+        timestamp=timestamp,
+    )
     locked_run.phase_statuses = phase_statuses
     locked_run.status = "in-progress"
 
@@ -713,7 +883,15 @@ def modify_phase_proposal(
                 },
             }
         )
-        phase_statuses[phase] = "awaiting-approval"
+        _set_phase_status(
+            phase_statuses=phase_statuses,
+            phase=phase,
+            new_status="awaiting-approval",
+            events=events,
+            run_id=locked_run.id,
+            reason="proposal-regeneration-failed",
+            timestamp=timestamp,
+        )
         locked_run.phase_statuses = phase_statuses
         locked_run.status = "awaiting-approval"
         locked_run.context_events = events
@@ -729,7 +907,15 @@ def modify_phase_proposal(
     proposal_artifacts[phase] = regenerated_proposal
     locked_run.proposal_artifacts = proposal_artifacts
 
-    phase_statuses[phase] = "awaiting-approval"
+    _set_phase_status(
+        phase_statuses=phase_statuses,
+        phase=phase,
+        new_status="awaiting-approval",
+        events=events,
+        run_id=locked_run.id,
+        reason="proposal-regenerated",
+        timestamp=timestamp,
+    )
     locked_run.phase_statuses = phase_statuses
     locked_run.status = "awaiting-approval"
     events.append(

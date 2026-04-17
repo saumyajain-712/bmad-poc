@@ -21,6 +21,7 @@ class Run(RunBase):
     current_phase: str | None = None
     current_phase_index: int = -1
     phase_statuses: dict[str, str] = Field(default_factory=dict)
+    phase_status_badges: dict[str, str] = Field(default_factory=dict)
     pending_approved_phase: str | None = None
     proposal_artifacts: dict[str, dict] = Field(default_factory=dict)
     current_phase_proposal: dict | None = None

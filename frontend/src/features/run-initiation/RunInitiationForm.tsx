@@ -3,9 +3,14 @@ import { createRun, submitRunClarifications } from '../../services/bmadService';
 
 interface RunContextEvent {
   event_type: string;
-  phase: string;
-  context_source: string;
-  context_version: number;
+  run_id?: number;
+  phase?: string;
+  context_source?: string;
+  context_version?: number;
+  old_status?: string;
+  new_status?: string;
+  reason?: string;
+  timestamp?: string;
 }
 
 interface RunSnapshot {
@@ -15,6 +20,8 @@ interface RunSnapshot {
   resolved_input_context: string | null;
   context_version: number;
   context_events: RunContextEvent[];
+  phase_statuses?: Record<string, string>;
+  phase_status_badges?: Record<string, string>;
 }
 
 const RunInitiationForm: React.FC = () => {
@@ -222,11 +229,27 @@ const RunInitiationForm: React.FC = () => {
           <p><strong>Resolved input context</strong></p>
           <p>{latestRun.resolved_input_context || 'Pending clarification.'}</p>
           <p><strong>Context version: {latestRun.context_version}</strong></p>
+          {latestRun.phase_statuses && Object.keys(latestRun.phase_statuses).length > 0 && (
+            <>
+              <p><strong>Phase statuses</strong></p>
+              <ul>
+                {Object.entries(latestRun.phase_statuses).map(([phase, status]) => (
+                  <li key={phase}>
+                    {phase}: {latestRun.phase_status_badges?.[status] || status}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           {Array.isArray(latestRun.context_events) && latestRun.context_events.length > 0 && (
             <ul style={{ marginBottom: 0 }}>
               {latestRun.context_events.map((event, index) => (
                 <li key={`${event.event_type}-${event.phase}-${index}`}>
-                  {event.event_type} ({event.phase}) - source: {event.context_source}, version: {event.context_version}
+                  {event.event_type}
+                  {event.phase ? ` (${event.phase})` : ''}
+                  {event.event_type === 'phase-status-changed'
+                    ? ` ${event.old_status} -> ${event.new_status} (${event.reason || 'n/a'})`
+                    : ` - source: ${event.context_source || 'n/a'}, version: ${event.context_version ?? 'n/a'}`}
                 </li>
               ))}
             </ul>

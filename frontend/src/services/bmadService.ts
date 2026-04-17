@@ -9,6 +9,7 @@ interface Run {
     context_version: number;
     context_events: Array<{
         event_type: string;
+        run_id?: number;
         phase?: string;
         context_source?: string;
         context_version?: number;
@@ -16,10 +17,15 @@ interface Run {
         next_phase?: string;
         trigger?: string;
         timestamp?: string;
+        old_status?: string;
+        new_status?: string;
+        reason?: string;
         step?: string;
         error_summary?: string;
         artifact?: Record<string, unknown>;
     }>;
+    phase_statuses: Record<string, string>;
+    phase_status_badges: Record<string, string>;
     proposal_artifacts: Record<string, Record<string, unknown>>;
     current_phase_proposal: Record<string, unknown> | null;
 }
