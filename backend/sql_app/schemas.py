@@ -105,3 +105,20 @@ class PhaseModifyResponse(BaseModel):
     proposal_generated_at: str
     proposal_revision: int
     previous_revision: int
+
+
+class RunResumeRequest(BaseModel):
+    decision_type: str = Field(min_length=1, max_length=32)
+    source_checkpoint: str | None = Field(default=None, max_length=128)
+    decision_token: str | None = Field(default=None, max_length=128)
+    reason: str | None = Field(default=None, max_length=256)
+
+
+class RunResumeResponse(BaseModel):
+    run_id: int
+    status: str
+    decision_type: str
+    restored_context: dict
+    resumed_phase: str | None = None
+    no_op: bool = False
+    reason: str | None = None

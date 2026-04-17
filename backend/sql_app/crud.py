@@ -945,3 +945,214 @@ def modify_phase_proposal(
     db.commit()
     db.refresh(locked_run)
     return locked_run, regenerated_proposal, "regenerated"
+
+
+def _latest_resume_event(
+    events: list[object],
+    event_type: str,
+) -> dict | None:
+    for event in reversed(events):
+        if isinstance(event, dict) and event.get("event_type") == event_type:
+            return event
+    return None
+
+
+def _append_resume_event(
+    events: list[dict],
+    *,
+    event_type: str,
+    run_id: int,
+    phase: str | None,
+    decision_type: str,
+    source_checkpoint: str,
+    decision_token: str | None,
+    reason: str | None,
+    timestamp: str,
+    no_op: bool = False,
+) -> None:
+    event = {
+        "event_type": event_type,
+        "run_id": run_id,
+        "phase": phase,
+        "decision_type": decision_type,
+        "source_checkpoint": source_checkpoint,
+        "decision_token": decision_token,
+        "reason": reason,
+        "timestamp": timestamp,
+    }
+    if no_op:
+        event["no_op"] = True
+    events.append(event)
+
+
+def _build_restored_context_snapshot(db_run: models.Run) -> dict:
+    proposal_artifacts = (
+        db_run.proposal_artifacts if isinstance(db_run.proposal_artifacts, dict) else {}
+    )
+    phase_statuses = _safe_phase_statuses(db_run.phase_statuses)
+    expected_phase = orchestration.get_next_phase(
+        db_run.current_phase_index if db_run.current_phase_index is not None else -1
+    )
+    return {
+        "resolved_input_context": db_run.resolved_input_context,
+        "current_phase": db_run.current_phase,
+        "current_phase_index": db_run.current_phase_index,
+        "phase_statuses": phase_statuses,
+        "pending_approved_phase": db_run.pending_approved_phase,
+        "expected_next_phase": expected_phase,
+        "proposal_metadata": {
+            phase: {
+                "status": payload.get("status"),
+                "generated_at": payload.get("generated_at"),
+                "revision": payload.get("revision"),
+            }
+            for phase, payload in proposal_artifacts.items()
+            if isinstance(payload, dict)
+        },
+        "verification_status": db_run.status,
+    }
+
+
+def resume_run_orchestration(
+    db: Session,
+    db_run: models.Run,
+    *,
+    decision_type: str,
+    source_checkpoint: str,
+    decision_token: str | None,
+    reason: str | None,
+    timestamp: str,
+) -> tuple[models.Run | None, dict | None, str]:
+    normalized_decision = decision_type.strip().lower()
+    if normalized_decision not in {"approve", "modify", "clarify"}:
+        return None, None, "unsupported_resume_decision"
+
+    locked_run = (
+        db.query(models.Run)
+        .filter(models.Run.id == db_run.id)
+        .with_for_update()
+        .first()
+    )
+    if locked_run is None:
+        return None, None, "resume_conflict"
+
+    events = list(locked_run.context_events or [])
+    latest_completed = _latest_resume_event(events, "resume-completed")
+    if (
+        isinstance(latest_completed, dict)
+        and latest_completed.get("decision_type") == normalized_decision
+        and latest_completed.get("source_checkpoint") == source_checkpoint
+        and latest_completed.get("decision_token") == decision_token
+    ):
+        snapshot = _build_restored_context_snapshot(locked_run)
+        return locked_run, snapshot, "resume_no_op"
+
+    expected_phase = orchestration.get_next_phase(
+        locked_run.current_phase_index if locked_run.current_phase_index is not None else -1
+    )
+    current_phase = locked_run.current_phase or expected_phase
+    snapshot = _build_restored_context_snapshot(locked_run)
+    phase_statuses = _safe_phase_statuses(locked_run.phase_statuses)
+
+    _append_resume_event(
+        events,
+        event_type="resume-requested",
+        run_id=locked_run.id,
+        phase=current_phase,
+        decision_type=normalized_decision,
+        source_checkpoint=source_checkpoint,
+        decision_token=decision_token,
+        reason=reason,
+        timestamp=timestamp,
+    )
+    _append_resume_event(
+        events,
+        event_type="context-restored",
+        run_id=locked_run.id,
+        phase=current_phase,
+        decision_type=normalized_decision,
+        source_checkpoint=source_checkpoint,
+        decision_token=decision_token,
+        reason=reason,
+        timestamp=timestamp,
+    )
+    _append_resume_event(
+        events,
+        event_type="resume-started",
+        run_id=locked_run.id,
+        phase=current_phase,
+        decision_type=normalized_decision,
+        source_checkpoint=source_checkpoint,
+        decision_token=decision_token,
+        reason=reason,
+        timestamp=timestamp,
+    )
+
+    conflict_reason: str | None = None
+    no_op = False
+    if normalized_decision == "clarify":
+        if not (locked_run.resolved_input_context or "").strip():
+            conflict_reason = "clarification_context_unresolved"
+        elif expected_phase is None:
+            conflict_reason = "phase_sequence_complete"
+        elif locked_run.status not in {"initiated", "in-progress", "awaiting-approval"}:
+            conflict_reason = "run_not_active"
+        elif phase_statuses.get(expected_phase) == "pending":
+            # Promote run to in-progress when clarification resumes orchestration.
+            locked_run.status = "in-progress"
+            no_op = False
+        else:
+            no_op = True
+    elif normalized_decision == "modify":
+        if expected_phase is None:
+            conflict_reason = "phase_sequence_complete"
+        elif (
+            locked_run.status not in {"awaiting-approval", "in-progress"}
+            or phase_statuses.get(expected_phase) not in {"awaiting-approval", "in-progress"}
+        ):
+            conflict_reason = "phase_not_awaiting_approval"
+        else:
+            no_op = True
+    else:  # approve
+        if expected_phase is None:
+            conflict_reason = "phase_sequence_complete"
+        elif locked_run.current_phase != expected_phase:
+            conflict_reason = "phase_not_approved"
+        else:
+            no_op = True
+
+    if conflict_reason is not None:
+        _append_resume_event(
+            events,
+            event_type="resume-failed",
+            run_id=locked_run.id,
+            phase=current_phase,
+            decision_type=normalized_decision,
+            source_checkpoint=source_checkpoint,
+            decision_token=decision_token,
+            reason=conflict_reason,
+            timestamp=timestamp,
+        )
+        locked_run.context_events = events
+        db.add(locked_run)
+        db.commit()
+        db.refresh(locked_run)
+        return locked_run, snapshot, conflict_reason
+
+    _append_resume_event(
+        events,
+        event_type="resume-completed",
+        run_id=locked_run.id,
+        phase=current_phase,
+        decision_type=normalized_decision,
+        source_checkpoint=source_checkpoint,
+        decision_token=decision_token,
+        reason=reason,
+        timestamp=timestamp,
+        no_op=no_op,
+    )
+    locked_run.context_events = events
+    db.add(locked_run)
+    db.commit()
+    db.refresh(locked_run)
+    return locked_run, snapshot, "resumed_no_op" if no_op else "resumed"

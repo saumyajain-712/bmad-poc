@@ -824,3 +824,74 @@ def advance_run_phase(
         "trigger": "approval",
         "status": "transitioned",
     }
+
+
+@router.post(
+    "/runs/{run_id}/resume",
+    response_model=schemas.RunResumeResponse,
+)
+def resume_run_from_current_state(
+    run_id: int,
+    payload: schemas.RunResumeRequest,
+    db: Session = Depends(get_db),
+):
+    db_run = crud.get_run(db, run_id=run_id)
+    if db_run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    decision_type = payload.decision_type.strip().lower()
+    if decision_type not in {"approve", "modify", "clarify"}:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": "unsupported_resume_decision",
+                "message": "Resume decision type must be one of: approve, modify, clarify.",
+            },
+        )
+
+    source_checkpoint = (payload.source_checkpoint or "api").strip() or "api"
+    resumed_run, snapshot, outcome = crud.resume_run_orchestration(
+        db=db,
+        db_run=db_run,
+        decision_type=decision_type,
+        source_checkpoint=source_checkpoint,
+        decision_token=(payload.decision_token or "").strip() or None,
+        reason=(payload.reason or "").strip() or None,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+    if resumed_run is None or snapshot is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "resume_conflict",
+                "message": "Resume operation conflicted with a concurrent update. Retry the request.",
+            },
+        )
+    if outcome in {
+        "phase_sequence_complete",
+        "run_not_active",
+        "phase_not_awaiting_approval",
+        "phase_not_approved",
+        "clarification_context_unresolved",
+    }:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": outcome,
+                "message": "Resume request is not valid for the current run state.",
+                "run_id": resumed_run.id,
+                "decision_type": decision_type,
+                "current_status": resumed_run.status,
+                "current_phase": resumed_run.current_phase,
+            },
+        )
+
+    return {
+        "run_id": resumed_run.id,
+        "status": resumed_run.status,
+        "decision_type": decision_type,
+        "restored_context": snapshot,
+        "resumed_phase": resumed_run.current_phase,
+        "no_op": outcome in {"resume_no_op", "resumed_no_op"},
+        "reason": (payload.reason or "").strip() or None,
+    }

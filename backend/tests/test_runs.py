@@ -1445,3 +1445,135 @@ def test_phase_status_change_events_include_transition_metadata(monkeypatch):
         anyio.run(exercise)
     finally:
         app.dependency_overrides.clear()
+
+
+def test_resume_clarify_restores_context_and_emits_lifecycle_events(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            resume_response = await client.post(
+                f"/api/v1/runs/{run_id}/resume",
+                json={
+                    "decision_type": "clarify",
+                    "source_checkpoint": "clarification-complete",
+                    "decision_token": "token-1",
+                    "reason": "clarifications accepted",
+                },
+            )
+            assert resume_response.status_code == 200
+            payload = resume_response.json()
+            assert payload["status"] == "in-progress"
+            assert payload["decision_type"] == "clarify"
+            assert payload["restored_context"]["expected_next_phase"] == "prd"
+            assert payload["no_op"] is False
+
+            run_response = await client.get(f"/api/v1/runs/{run_id}")
+            assert run_response.status_code == 200
+            events = run_response.json()["context_events"]
+            resume_events = [event for event in events if event.get("event_type", "").startswith("resume-")]
+            assert any(event.get("event_type") == "resume-requested" for event in resume_events)
+            assert any(event.get("event_type") == "resume-started" for event in resume_events)
+            assert any(event.get("event_type") == "resume-completed" for event in resume_events)
+            assert any(event.get("event_type") == "context-restored" for event in events)
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_resume_rejects_invalid_state_and_returns_machine_readable_conflict(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            run_id = create_response.json()["run"]["id"]
+            await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+
+            invalid_resume = await client.post(
+                f"/api/v1/runs/{run_id}/resume",
+                json={
+                    "decision_type": "approve",
+                    "source_checkpoint": "approve-done",
+                    "decision_token": "token-2",
+                },
+            )
+            assert invalid_resume.status_code == 409
+            detail = invalid_resume.json()["detail"]
+            assert detail["error_code"] == "phase_not_approved"
+            assert detail["decision_type"] == "approve"
+
+            run_response = await client.get(f"/api/v1/runs/{run_id}")
+            events = run_response.json()["context_events"]
+            assert any(event.get("event_type") == "resume-failed" for event in events)
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_resume_deduplicates_identical_calls_as_no_op(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            run_id = create_response.json()["run"]["id"]
+            await client.post(
+                f"/api/v1/runs/{run_id}/resume",
+                json={
+                    "decision_type": "clarify",
+                    "source_checkpoint": "clarification-complete",
+                    "decision_token": "token-3",
+                },
+            )
+            second_resume = await client.post(
+                f"/api/v1/runs/{run_id}/resume",
+                json={
+                    "decision_type": "clarify",
+                    "source_checkpoint": "clarification-complete",
+                    "decision_token": "token-3",
+                },
+            )
+            assert second_resume.status_code == 200
+            assert second_resume.json()["no_op"] is True
+
+            run_response = await client.get(f"/api/v1/runs/{run_id}")
+            events = run_response.json()["context_events"]
+            completed_events = [
+                event
+                for event in events
+                if event.get("event_type") == "resume-completed"
+                and event.get("decision_token") == "token-3"
+            ]
+            assert len(completed_events) == 1
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
