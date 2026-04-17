@@ -624,16 +624,16 @@ def modify_run_phase_proposal(
         )
     if modify_outcome == "phase_proposal_missing":
         raise HTTPException(
-            status_code=409,
+            status_code=500,
             detail={
                 "error_code": "phase_proposal_missing",
-                "message": "Current phase proposal is required before modify can be accepted.",
+                "message": "Current phase proposal is missing from persisted state.",
                 "phase": normalized_phase,
             },
         )
     if modify_outcome == "phase_revision_invalid":
         raise HTTPException(
-            status_code=409,
+            status_code=500,
             detail={
                 "error_code": "phase_revision_invalid",
                 "message": "Current phase proposal revision metadata is invalid.",
@@ -659,14 +659,53 @@ def modify_run_phase_proposal(
             },
         )
 
+    if modify_outcome != "regenerated":
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error_code": "unexpected_modify_outcome",
+                "message": "Modify request returned an unexpected outcome state.",
+                "outcome": modify_outcome,
+                "phase": normalized_phase,
+            },
+        )
+    if not isinstance(regenerated_proposal, dict):
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error_code": "invalid_regenerated_proposal",
+                "message": "Regenerated proposal payload is missing or malformed.",
+                "phase": normalized_phase,
+            },
+        )
+
+    proposal_status = regenerated_proposal.get("status")
+    generated_at = regenerated_proposal.get("generated_at")
+    revision = regenerated_proposal.get("revision")
+    previous_revision = regenerated_proposal.get("derived_from_revision")
+    if (
+        not isinstance(proposal_status, str)
+        or not isinstance(generated_at, str)
+        or not isinstance(revision, int)
+        or not isinstance(previous_revision, int)
+    ):
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error_code": "invalid_regenerated_proposal",
+                "message": "Regenerated proposal payload is missing required fields.",
+                "phase": normalized_phase,
+            },
+        )
+
     return {
         "run_id": updated_run.id,
         "phase": normalized_phase,
         "status": "modified-and-regenerated",
-        "proposal_status": regenerated_proposal["status"],
-        "proposal_generated_at": regenerated_proposal["generated_at"],
-        "proposal_revision": regenerated_proposal["revision"],
-        "previous_revision": regenerated_proposal["derived_from_revision"],
+        "proposal_status": proposal_status,
+        "proposal_generated_at": generated_at,
+        "proposal_revision": revision,
+        "previous_revision": previous_revision,
     }
 
 

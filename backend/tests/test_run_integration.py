@@ -249,10 +249,14 @@ def test_modify_then_approve_flow_integration(monkeypatch, tmp_path):
 
             start_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
             assert start_response.status_code == 200
+            assert start_response.json()["proposal_revision"] == 1
 
             modify_response = await client.post(
                 f"/api/v1/runs/{run_id}/phases/prd/modify",
-                json={"feedback": "Add clear security and performance expectations."},
+                json={
+                    "feedback": "Add clear security and performance expectations.",
+                    "proposal_revision": 1,
+                },
             )
             assert modify_response.status_code == 200
             assert modify_response.json()["proposal_revision"] == 2

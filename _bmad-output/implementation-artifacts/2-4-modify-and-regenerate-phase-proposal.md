@@ -1,6 +1,6 @@
 # Story 2.4: Modify and Regenerate Phase Proposal
 
-Status: review
+Status: done
 
 ## Story
 
@@ -47,6 +47,15 @@ so that I can ensure the agent's output aligns with my requirements and vision.
   - [x] Positive: modify request accepted, proposal regenerated, same phase remains reviewable.
   - [x] Negative: missing proposal, wrong phase status, terminal/invalid phase, malformed feedback.
   - [x] Regression: approval flow (Story 2.3), sequencing (Story 2.1), and proposal lifecycle (Story 2.2) remain intact.
+
+### Review Findings
+
+- [x] [Review][Patch] Require `proposal_revision` for modify requests [backend/sql_app/schemas.py]
+- [x] [Review][Patch] Guard unknown `modify_outcome` values in modify endpoint [backend/api/v1/endpoints/runs.py]
+- [x] [Review][Patch] Add explicit regeneration-failure rollback test coverage [backend/tests/test_runs.py]
+- [x] [Review][Patch] Add stale-after-regeneration regression test (`r1 -> success to r2 -> retry with r1`) [backend/tests/test_runs.py]
+- [x] [Review][Patch] Harden response payload extraction for regenerated proposal keys [backend/api/v1/endpoints/runs.py]
+- [x] [Review][Patch] Add strict validation limits for modify payload (`feedback` size/shape, strict positive revision) [backend/sql_app/schemas.py]
 
 ## Dev Notes
 
@@ -175,8 +184,9 @@ gpt-5.3-codex-low
 
 - 2026-04-17: Refined Story 2.4 context package with canonical user story/AC alignment, FR9/FR10/FR12 guardrails, and implementation constraints; status confirmed `ready-for-dev`.
 - 2026-04-17: Implemented modify-and-regenerate phase proposal flow with guarded endpoint contract, deterministic same-phase regeneration, proposal artifact audit trail, lifecycle timeline events, and backend/integration test coverage.
+- 2026-04-17: Code review follow-up applied - required `proposal_revision`, hardened modify outcome/response handling, and added validation + regression/failure-path tests.
 
 ## Story Status
 
-**Status:** review  
-**Notes:** Story implementation completed with deterministic modify/regenerate flow, guarded API contract, proposal artifact auditing, lifecycle timeline events, and passing targeted backend/integration tests.
+**Status:** done  
+**Notes:** Review findings resolved and verified: strict modify payload validation, defensive modify outcome handling, stale-after-regeneration guard coverage, and regeneration-failure rollback test coverage all pass.

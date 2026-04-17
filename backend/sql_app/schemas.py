@@ -88,9 +88,9 @@ class PhaseProposalResponse(BaseModel):
 
 
 class PhaseModificationRequest(BaseModel):
-    feedback: str
-    actor: str = "session:api"
-    proposal_revision: int | None = None
+    feedback: str = Field(min_length=1, max_length=4000)
+    actor: str = Field(default="session:api", min_length=1, max_length=128)
+    proposal_revision: int = Field(strict=True, ge=1)
 
 
 class PhaseModifyResponse(BaseModel):

@@ -948,7 +948,7 @@ def test_modify_rejects_missing_proposal_wrong_status_and_stale_revision(monkeyp
 
             missing_proposal_response = await client.post(
                 f"/api/v1/runs/{run_id}/phases/prd/modify",
-                json={"feedback": "Improve scope coverage."},
+                json={"feedback": "Improve scope coverage.", "proposal_revision": 1},
             )
             assert missing_proposal_response.status_code == 409
             assert missing_proposal_response.json()["detail"]["error_code"] == "phase_not_awaiting_approval"
@@ -960,18 +960,170 @@ def test_modify_rejects_missing_proposal_wrong_status_and_stale_revision(monkeyp
                 f"/api/v1/runs/{run_id}/phases/prd/modify",
                 json={"feedback": "Use clearer acceptance criteria.", "proposal_revision": 0},
             )
-            assert stale_response.status_code == 409
-            assert stale_response.json()["detail"]["error_code"] == "stale_proposal_revision"
+            assert stale_response.status_code == 422
 
             approve_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/approve")
             assert approve_response.status_code == 200
 
             wrong_phase_state_response = await client.post(
                 f"/api/v1/runs/{run_id}/phases/prd/modify",
-                json={"feedback": "Try to modify after phase transition."},
+                json={"feedback": "Try to modify after phase transition.", "proposal_revision": 2},
             )
             assert wrong_phase_state_response.status_code == 409
             assert wrong_phase_state_response.json()["detail"]["error_code"] == "phase_skip_not_allowed"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_modify_requires_proposal_revision_and_strict_positive_integer(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            run_id = create_response.json()["run"]["id"]
+            await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+
+            missing_revision = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/modify",
+                json={"feedback": "Add security constraints."},
+            )
+            assert missing_revision.status_code == 422
+
+            bool_revision = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/modify",
+                json={"feedback": "Add security constraints.", "proposal_revision": True},
+            )
+            assert bool_revision.status_code == 422
+
+            zero_revision = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/modify",
+                json={"feedback": "Add security constraints.", "proposal_revision": 0},
+            )
+            assert zero_revision.status_code == 422
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_modify_rejects_oversized_feedback(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            run_id = create_response.json()["run"]["id"]
+            await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+
+            oversized_feedback = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/modify",
+                json={
+                    "feedback": "A" * 4001,
+                    "proposal_revision": 1,
+                },
+            )
+            assert oversized_feedback.status_code == 422
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_modify_rejects_stale_revision_after_successful_regeneration(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            run_id = create_response.json()["run"]["id"]
+
+            await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+
+            first_modify = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/modify",
+                json={"feedback": "Add non-functional requirements.", "proposal_revision": 1},
+            )
+            assert first_modify.status_code == 200
+            assert first_modify.json()["proposal_revision"] == 2
+
+            stale_retry = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/modify",
+                json={"feedback": "Try stale retry.", "proposal_revision": 1},
+            )
+            assert stale_retry.status_code == 409
+            assert stale_retry.json()["detail"]["error_code"] == "stale_proposal_revision"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_modify_returns_502_and_persists_failure_event_on_regeneration_error(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            run_id = create_response.json()["run"]["id"]
+            await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+
+            def _raise_generation_failure(**kwargs):
+                raise RuntimeError("regeneration unavailable")
+
+            monkeypatch.setattr(
+                orchestration,
+                "build_phase_proposal_payload",
+                _raise_generation_failure,
+            )
+
+            modify_response = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/modify",
+                json={"feedback": "Trigger regeneration failure path.", "proposal_revision": 1},
+            )
+            assert modify_response.status_code == 502
+            assert modify_response.json()["detail"]["error_code"] == "proposal_regeneration_failed"
+
+            run_response = await client.get(f"/api/v1/runs/{run_id}")
+            run_payload = run_response.json()
+            assert run_payload["status"] == "awaiting-approval"
+            assert run_payload["phase_statuses"]["prd"] == "awaiting-approval"
+            assert run_payload["proposal_artifacts"]["prd"]["revision"] == 1
+            assert any(
+                event.get("event_type") == "proposal_generation_failed"
+                and event.get("step") == "modify-regenerate-proposal"
+                for event in run_payload["context_events"]
+            )
 
     try:
         anyio.run(exercise)
