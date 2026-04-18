@@ -13,9 +13,19 @@ export function redactSensitivePatterns(text: string): string {
   return out;
 }
 
+function payloadToString(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  try {
+    return JSON.stringify(value ?? {}, (_key, v) => (typeof v === 'bigint' ? v.toString() : v));
+  } catch {
+    return '[unserializable]';
+  }
+}
+
 export function summarizeToolPayload(value: unknown, maxLen = 120): string {
-  const raw =
-    typeof value === 'string' ? value : JSON.stringify(value ?? {}, null, 0);
+  const raw = payloadToString(value);
   const compact = raw.replace(/\s+/g, ' ').trim();
   const truncated =
     compact.length > maxLen ? `${compact.slice(0, maxLen - 3).trimEnd()}...` : compact;

@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import RunTimeline from '../RunTimeline';
-import { redactSensitivePatterns } from '../toolEventPresentation';
+import { redactSensitivePatterns, summarizeToolPayload } from '../toolEventPresentation';
 import { TOOL_CALL_COMPLETED_EVENT_TYPE } from '../../../services/bmadService';
 
 describe('RunTimeline', () => {
@@ -97,6 +97,38 @@ describe('RunTimeline', () => {
     expect(redactSensitivePatterns(dirty)).toContain('[redacted]');
     expect(redactSensitivePatterns(dirty)).not.toContain('Bearer abc123xyz');
     expect(redactSensitivePatterns(dirty)).not.toContain('sk-abcdefghijklmnopqrstuv');
+  });
+
+  it('redacts secrets in the rendered tool row (NFR12 presentation path)', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: TOOL_CALL_COMPLETED_EVENT_TYPE,
+            phase: 'prd',
+            timestamp: '2026-04-17T16:00:05Z',
+            tool_name: 'mock_tool',
+            tool_input: { scope: 'ok' },
+            tool_output: {
+              token: 'Bearer verysecrettoken',
+              key: 'sk-abcdefghijklmnopqrstuv',
+            },
+          },
+        ]}
+      />
+    );
+
+    const row = screen.getByRole('listitem');
+    expect(row.textContent).toContain('[redacted]');
+    expect(row.textContent).not.toContain('verysecrettoken');
+    expect(row.textContent).not.toContain('sk-abcdefghijklmnopqrstuv');
+  });
+
+  it('summarizeToolPayload does not throw on BigInt or circular values', () => {
+    expect(summarizeToolPayload({ n: BigInt(99) })).toContain('99');
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    expect(summarizeToolPayload(circular)).toBe('[unserializable]');
   });
 
   it('renders fallback labels when timestamp or phase are missing', () => {

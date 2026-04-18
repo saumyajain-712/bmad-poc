@@ -1,6 +1,6 @@
 # Story 3.2: Display Tool-Call Events
 
-Status: review
+Status: done
 
 <!-- Ultimate context engine analysis completed - comprehensive developer guide created -->
 
@@ -121,3 +121,14 @@ Composer (Cursor agent)
 ### Change Log
 
 - 2026-04-18: Implemented `tool-call-completed` events in proposal generation, timeline UI, redaction helpers, and tests (Story 3.2).
+- 2026-04-18: Code review follow-up — wall-clock ISO decision; safe `summarizeToolPayload`; RunTimeline redaction coverage tests.
+
+### Review Findings
+
+- [x] [Review][Decision] Tool event `timestamp` determinism vs consistency — **Resolved (2026-04-18):** wall-clock UTC ISO for tool events; deterministic-demo applies to mock tool payloads and ordering, not timestamp bytes (aligned with other `context_events` in `runs.py`).
+
+- [x] [Review][Patch] Guard `summarizeToolPayload` against `JSON.stringify` failures — `frontend/src/features/run-observability/toolEventPresentation.ts` — **Fixed:** `payloadToString` uses `BigInt` replacer and try/catch → `[unserializable]`.
+
+- [x] [Review][Patch] Strengthen AC3 / NFR12 test coverage — `frontend/src/features/run-observability/__tests__/RunTimeline.test.tsx` — **Fixed:** integration-style test on rendered tool row + `summarizeToolPayload` BigInt/circular cases.
+
+- [x] [Review][Defer] Committed `__pycache__` / test cache artifacts in review range — `backend/services/__pycache__/` — deferred, pre-existing hygiene (same theme as 3-1 code review).

@@ -19,6 +19,10 @@
 
 - Repeated phase-start requests can regenerate proposal revisions and append additional events during retry/double-submit paths (`backend/api/v1/endpoints/runs.py`, `backend/sql_app/crud.py`) — deferred as pre-existing to current change set.
 
+## Deferred from: code review of 3-2-display-tool-call-events.md (2026-04-18)
+
+- Committed `__pycache__` / test cache artifacts in review range — deferred as pre-existing repository hygiene (same class as 3-1 review).
+
 ## Deferred from: code review of 3-1-view-agent-actions-timeline.md (2026-04-17)
 
 - Committed runtime/build artifacts in review range (`backend/sql_app.db`, `sql_app.db`, `__pycache__`, test cache outputs) — deferred as pre-existing to current change set.
