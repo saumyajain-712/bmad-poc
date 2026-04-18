@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { TOOL_CALL_COMPLETED_EVENT_TYPE, type RunTimelineEvent } from '../../services/bmadService';
+import EventDetailPanel from './EventDetailPanel';
 import { summarizeToolPayload } from './toolEventPresentation';
 
 interface RunTimelineProps {
@@ -39,7 +40,10 @@ const eventKey = (event: RunTimelineEvent, index: number): string => (
   `${event.timestamp || 'na'}-${event.event_type}-${event.phase || 'na'}-${index}`
 );
 
+/** Only one timeline row shows an expanded detail panel at a time (stable list; toggles inspection only). */
 const RunTimeline: React.FC<RunTimelineProps> = ({ events }) => {
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+
   if (!Array.isArray(events) || events.length === 0) {
     return null;
   }
@@ -59,6 +63,10 @@ const RunTimeline: React.FC<RunTimelineProps> = ({ events }) => {
       <ul style={{ marginBottom: 0, paddingLeft: 18 }}>
         {events.map((event, index) => {
           const isTool = event.event_type === TOOL_CALL_COMPLETED_EVENT_TYPE;
+          const expanded = expandedIndex === index;
+          const toggleId = `timeline-event-toggle-${index}`;
+          const panelId = `timeline-event-detail-${index}`;
+
           return (
             <li
               key={eventKey(event, index)}
@@ -75,21 +83,63 @@ const RunTimeline: React.FC<RunTimelineProps> = ({ events }) => {
                   : { marginBottom: 4 }
               }
             >
-              <span style={isTool ? { fontFamily: 'inherit' } : undefined}>
-                <strong>{formatTimestamp(event.timestamp)}</strong>
-                {' | '}
-                {event.phase || 'unscoped'}
-                {' | '}
-                {isTool ? (
-                  <span style={{ color: '#31708f' }}>
-                    <strong>{event.event_type}</strong>
-                  </span>
-                ) : (
-                  event.event_type
-                )}
-                {' | '}
-              </span>
-              {formatEventDetail(event)}
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'flex-start',
+                  gap: 8,
+                }}
+              >
+                <button
+                  type="button"
+                  id={toggleId}
+                  aria-expanded={expanded}
+                  aria-controls={panelId}
+                  onClick={() => setExpandedIndex(expanded ? null : index)}
+                  style={{
+                    flex: '0 0 auto',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    padding: '2px 8px',
+                    borderRadius: 2,
+                    border: '1px solid #5bc0de',
+                    background: expanded ? '#5bc0de' : '#fff',
+                    color: expanded ? '#fff' : '#31708f',
+                  }}
+                >
+                  {expanded ? 'Hide details' : 'Details'}
+                </button>
+                <span style={isTool ? { fontFamily: 'inherit' } : undefined}>
+                  <strong>{formatTimestamp(event.timestamp)}</strong>
+                  {' | '}
+                  {event.phase || 'unscoped'}
+                  {' | '}
+                  {isTool ? (
+                    <span style={{ color: '#31708f' }}>
+                      <strong>{event.event_type}</strong>
+                    </span>
+                  ) : (
+                    event.event_type
+                  )}
+                  {' | '}
+                  {formatEventDetail(event)}
+                </span>
+              </div>
+              {expanded ? (
+                <div
+                  id={panelId}
+                  role="region"
+                  aria-labelledby={toggleId}
+                  style={{
+                    marginTop: 10,
+                    paddingTop: 8,
+                    borderTop: '1px solid #bce8f1',
+                  }}
+                >
+                  <EventDetailPanel event={event} />
+                </div>
+              ) : null}
             </li>
           );
         })}

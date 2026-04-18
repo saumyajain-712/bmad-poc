@@ -13,16 +13,39 @@ export function redactSensitivePatterns(text: string): string {
   return out;
 }
 
+function jsonReplacer(_key: string, v: unknown): unknown {
+  return typeof v === 'bigint' ? v.toString() : v;
+}
+
 function payloadToString(value: unknown): string {
   if (typeof value === 'string') {
     return value;
   }
   try {
-    return JSON.stringify(value ?? {}, (_key, v) => (typeof v === 'bigint' ? v.toString() : v));
+    return JSON.stringify(value ?? {}, jsonReplacer);
   } catch {
     return '[unserializable]';
   }
 }
+
+/**
+ * Pretty-print JSON with BigInt-safe serialization and the same redaction rules as summaries (NFR12).
+ * Use for full tool_input / tool_output and full-event debug dumps in the detail panel.
+ */
+export function formatRedactedJsonPretty(value: unknown): string {
+  if (typeof value === 'string') {
+    return redactSensitivePatterns(value);
+  }
+  try {
+    const s = JSON.stringify(value ?? {}, jsonReplacer, 2);
+    return redactSensitivePatterns(s);
+  } catch {
+    return '[unserializable]';
+  }
+}
+
+/** Alias for story wording — full payload display in inspect UI. */
+export const formatFullPayloadForDisplay = formatRedactedJsonPretty;
 
 export function summarizeToolPayload(value: unknown, maxLen = 120): string {
   const raw = payloadToString(value);

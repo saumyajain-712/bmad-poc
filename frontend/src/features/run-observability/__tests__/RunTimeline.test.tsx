@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import RunTimeline from '../RunTimeline';
 import { redactSensitivePatterns, summarizeToolPayload } from '../toolEventPresentation';
@@ -129,6 +129,111 @@ describe('RunTimeline', () => {
     const circular: Record<string, unknown> = {};
     circular.self = circular;
     expect(summarizeToolPayload(circular)).toBe('[unserializable]');
+  });
+
+  it('expands tool event detail with full pretty-printed redacted payloads (AC2, AC4)', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: TOOL_CALL_COMPLETED_EVENT_TYPE,
+            phase: 'prd',
+            timestamp: '2026-04-17T16:00:05Z',
+            tool_name: 'read_file',
+            tool_input: { path: 'docs/prd/context.md' },
+            tool_output: {
+              token: 'Bearer verysecrettoken',
+              key: 'sk-abcdefghijklmnopqrstuv',
+            },
+          },
+        ]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    const inputPre = screen.getByTestId('tool-input-full');
+    expect(inputPre.textContent).toContain('"path"');
+    expect(inputPre.textContent).toContain('docs/prd/context.md');
+
+    const outPre = screen.getByTestId('tool-output-full');
+    expect(outPre.textContent).toContain('[redacted]');
+    expect(outPre.textContent).not.toContain('verysecrettoken');
+    expect(outPre.textContent).not.toContain('sk-abcdefghijklmnopqrstuv');
+  });
+
+  it('expands non-tool event detail with structured fields and debug JSON (AC3)', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: 'phase-status-changed',
+            phase: 'prd',
+            old_status: 'pending',
+            new_status: 'in-progress',
+            reason: 'phase started',
+            timestamp: '2026-04-17T16:00:01Z',
+          },
+        ]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect(screen.getByText('Old status')).toBeInTheDocument();
+    expect(screen.getByText('pending')).toBeInTheDocument();
+    expect(screen.getByText('in-progress')).toBeInTheDocument();
+    expect(screen.getByText('Reason')).toBeInTheDocument();
+    expect(screen.getByText('phase started')).toBeInTheDocument();
+    const fullJson = screen.getByTestId('full-event-json');
+    expect(fullJson.textContent).toContain('phase-status-changed');
+  });
+
+  it('keeps all timeline rows when toggling detail; only inspection UI changes (AC5)', () => {
+    const events = [
+      {
+        event_type: 'context-resolved',
+        phase: 'prd',
+        timestamp: '2026-04-17T16:00:00Z',
+        context_source: 'resolved_input_context',
+        context_version: 1,
+      },
+      {
+        event_type: TOOL_CALL_COMPLETED_EVENT_TYPE,
+        phase: 'prd',
+        timestamp: '2026-04-17T16:00:05Z',
+        tool_name: 'read_file',
+        tool_input: {},
+        tool_output: {},
+      },
+    ];
+    render(<RunTimeline events={events} />);
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Details' })[0]);
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Hide details' })[0]);
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+    expect(screen.queryByTestId('full-event-json')).not.toBeInTheDocument();
+  });
+
+  it('sets aria-expanded on the details control when expanded', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: 'phase-status-changed',
+            phase: 'prd',
+            old_status: 'a',
+            new_status: 'b',
+            timestamp: 't',
+          },
+        ]}
+      />
+    );
+    const btn = screen.getByRole('button', { name: 'Details' });
+    expect(btn).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(btn);
+    expect(btn).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('renders fallback labels when timestamp or phase are missing', () => {
