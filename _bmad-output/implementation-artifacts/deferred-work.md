@@ -28,3 +28,7 @@
 - Committed runtime/build artifacts in review range (`backend/sql_app.db`, `sql_app.db`, `__pycache__`, test cache outputs) — deferred as pre-existing to current change set.
 - Clarification paused state can be non-actionable when questions array is empty in `RunInitiationForm` — deferred as pre-existing to current change set.
 - AC2 real-time update strategy (polling/SSE while timeline is open) deferred by product decision: Real-time polling/SSE is out of scope for POC; timeline updates on user action are sufficient.
+
+## Deferred from: code review of 3-3-inspect-event-level-details.md (2026-04-18)
+
+- Very large tool payload/event debug dumps may degrade rendering performance in the detail panel (`frontend/src/features/run-observability/EventDetailPanel.tsx`) — deferred as pre-existing/performance hardening follow-up.

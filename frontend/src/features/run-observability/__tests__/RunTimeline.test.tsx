@@ -150,7 +150,7 @@ describe('RunTimeline', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    fireEvent.click(screen.getByRole('button', { name: /Details for/ }));
     const inputPre = screen.getByTestId('tool-input-full');
     expect(inputPre.textContent).toContain('"path"');
     expect(inputPre.textContent).toContain('docs/prd/context.md');
@@ -177,7 +177,7 @@ describe('RunTimeline', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    fireEvent.click(screen.getByRole('button', { name: /Details for/ }));
     expect(screen.getByText('Old status')).toBeInTheDocument();
     expect(screen.getByText('pending')).toBeInTheDocument();
     expect(screen.getByText('in-progress')).toBeInTheDocument();
@@ -208,10 +208,10 @@ describe('RunTimeline', () => {
     render(<RunTimeline events={events} />);
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Details' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: /Details for/ })[0]);
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Hide details' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: /Hide details for/ })[0]);
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
     expect(screen.queryByTestId('full-event-json')).not.toBeInTheDocument();
   });
@@ -230,10 +230,42 @@ describe('RunTimeline', () => {
         ]}
       />
     );
-    const btn = screen.getByRole('button', { name: 'Details' });
+    const btn = screen.getByRole('button', { name: /Details for/ });
     expect(btn).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(btn);
     expect(btn).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('collapses detail if the expanded event is no longer present after refresh', () => {
+    const initialEvents = [
+      {
+        event_type: 'phase-status-changed',
+        phase: 'prd',
+        old_status: 'pending',
+        new_status: 'in-progress',
+        timestamp: '2026-04-17T16:00:01Z',
+      },
+    ];
+    const { rerender } = render(<RunTimeline events={initialEvents} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Details for/ }));
+    expect(screen.getByTestId('event-detail-panel')).toBeInTheDocument();
+
+    rerender(
+      <RunTimeline
+        events={[
+          {
+            event_type: 'context-resolved',
+            phase: 'prd',
+            timestamp: '2026-04-17T16:00:00Z',
+            context_source: 'resolved_input_context',
+            context_version: 1,
+          },
+        ]}
+      />
+    );
+
+    expect(screen.queryByTestId('event-detail-panel')).not.toBeInTheDocument();
   });
 
   it('renders fallback labels when timestamp or phase are missing', () => {

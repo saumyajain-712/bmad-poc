@@ -34,10 +34,16 @@ function payloadToString(value: unknown): string {
  */
 export function formatRedactedJsonPretty(value: unknown): string {
   if (typeof value === 'string') {
-    return redactSensitivePatterns(value);
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      const pretty = JSON.stringify(parsed, jsonReplacer, 2) ?? '[unserializable]';
+      return redactSensitivePatterns(pretty);
+    } catch {
+      return redactSensitivePatterns(value);
+    }
   }
   try {
-    const s = JSON.stringify(value ?? {}, jsonReplacer, 2);
+    const s = JSON.stringify(value ?? {}, jsonReplacer, 2) ?? '[unserializable]';
     return redactSensitivePatterns(s);
   } catch {
     return '[unserializable]';

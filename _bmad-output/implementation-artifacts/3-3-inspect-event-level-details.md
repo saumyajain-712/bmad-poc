@@ -1,6 +1,6 @@
 # Story 3.3: Inspect Event-Level Details
 
-Status: review
+Status: done
 
 <!-- Ultimate context engine analysis completed - comprehensive developer guide created -->
 
@@ -34,6 +34,14 @@ so that I can gain deep insights into the agent's operations.
 - [x] **Tests** (AC: 1–5)
   - [x] Extend `frontend/src/features/run-observability/__tests__/RunTimeline.test.tsx`: open detail for a tool event and assert full redacted JSON substrings; open detail for a non-tool event and assert key fields visible.
   - [x] Run `npm run lint` and `npm run test`.
+
+### Review Findings
+
+- [x] [Review][Patch] Expanded row can drift after event list refresh [frontend/src/features/run-observability/RunTimeline.tsx]
+- [x] [Review][Patch] `formatRedactedJsonPretty` can throw on non-serializable top-level values [frontend/src/features/run-observability/toolEventPresentation.ts]
+- [x] [Review][Patch] Details control label is not row-specific for screen readers [frontend/src/features/run-observability/RunTimeline.tsx]
+- [x] [Review][Patch] String payloads bypass pretty JSON formatting in detail view [frontend/src/features/run-observability/toolEventPresentation.ts]
+- [x] [Review][Defer] Very large payloads may degrade detail-panel rendering performance [frontend/src/features/run-observability/EventDetailPanel.tsx] — deferred, pre-existing
 
 ## Dev Notes
 

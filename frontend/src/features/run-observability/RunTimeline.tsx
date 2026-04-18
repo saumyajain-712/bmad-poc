@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { TOOL_CALL_COMPLETED_EVENT_TYPE, type RunTimelineEvent } from '../../services/bmadService';
 import EventDetailPanel from './EventDetailPanel';
 import { summarizeToolPayload } from './toolEventPresentation';
@@ -42,7 +42,15 @@ const eventKey = (event: RunTimelineEvent, index: number): string => (
 
 /** Only one timeline row shows an expanded detail panel at a time (stable list; toggles inspection only). */
 const RunTimeline: React.FC<RunTimelineProps> = ({ events }) => {
-  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const [expandedEventKey, setExpandedEventKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (expandedEventKey === null) return;
+    const keys = events.map((event, index) => eventKey(event, index));
+    if (!keys.includes(expandedEventKey)) {
+      setExpandedEventKey(null);
+    }
+  }, [events, expandedEventKey]);
 
   if (!Array.isArray(events) || events.length === 0) {
     return null;
@@ -62,14 +70,15 @@ const RunTimeline: React.FC<RunTimelineProps> = ({ events }) => {
       </p>
       <ul style={{ marginBottom: 0, paddingLeft: 18 }}>
         {events.map((event, index) => {
+          const key = eventKey(event, index);
           const isTool = event.event_type === TOOL_CALL_COMPLETED_EVENT_TYPE;
-          const expanded = expandedIndex === index;
+          const expanded = expandedEventKey === key;
           const toggleId = `timeline-event-toggle-${index}`;
           const panelId = `timeline-event-detail-${index}`;
 
           return (
             <li
-              key={eventKey(event, index)}
+              key={key}
               style={
                 isTool
                   ? {
@@ -96,7 +105,8 @@ const RunTimeline: React.FC<RunTimelineProps> = ({ events }) => {
                   id={toggleId}
                   aria-expanded={expanded}
                   aria-controls={panelId}
-                  onClick={() => setExpandedIndex(expanded ? null : index)}
+                  aria-label={`${expanded ? 'Hide details' : 'Details'} for ${event.event_type} at ${formatTimestamp(event.timestamp)}`}
+                  onClick={() => setExpandedEventKey(expanded ? null : key)}
                   style={{
                     flex: '0 0 auto',
                     cursor: 'pointer',
