@@ -40,3 +40,7 @@
 ## Deferred from: code review of 3-6-identify-failure-context-from-ui.md (2026-04-19)
 
 - Final fallback return in `formatFailureEventSummary` is unreachable with the current `isFailureTimelineEvent` predicates (`frontend/src/features/run-observability/phaseTimelinePresentation.ts`) — minor dead-code / future-hazard only; revisit when new failure event types are introduced.
+
+## Deferred from: code review of 4-1-run-verification-checks.md (2026-04-19)
+
+- Baseline verification checks accept `resolved_context_snapshot` but do not consult it yet (`backend/services/verification.py`); intentional hook for Story 4.2+ registered checks — not a functional gap for Story 4.1 ACs.

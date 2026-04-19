@@ -612,6 +612,72 @@ def test_verification_failure_still_reaches_awaiting_approval(monkeypatch):
         app.dependency_overrides.clear()
 
 
+def test_modify_regenerates_persists_verification_and_timeline_order(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+
+            modify_response = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/modify",
+                json={
+                    "feedback": "Please include explicit non-functional requirements.",
+                    "actor": "session:test",
+                    "proposal_revision": 1,
+                },
+            )
+            assert modify_response.status_code == 200
+
+            run_response = await client.get(f"/api/v1/runs/{run_id}")
+            assert run_response.status_code == 200
+            run_payload = run_response.json()
+            ver = run_payload["proposal_artifacts"]["prd"]["verification"]
+            assert ver["schema_version"] == 1
+            assert ver["overall"] == "passed"
+            assert ver["revision"] == 2
+            assert isinstance(ver["checks"], list)
+            assert len(ver["checks"]) >= 1
+
+            events = run_payload["context_events"]
+            pr_idxs = [
+                i
+                for i, e in enumerate(events)
+                if isinstance(e, dict) and e.get("event_type") == "proposal_regenerated"
+            ]
+            assert len(pr_idxs) == 1
+            pr_idx = pr_idxs[0]
+            v_rev2_idxs = [
+                i
+                for i, e in enumerate(events)
+                if isinstance(e, dict)
+                and e.get("event_type") == "verification_checks_completed"
+                and e.get("revision") == 2
+            ]
+            assert v_rev2_idxs, "expected verification_checks_completed for revision 2"
+            assert max(v_rev2_idxs) < pr_idx
+
+            v_event = events[v_rev2_idxs[-1]]
+            assert v_event["phase"] == "prd"
+            assert v_event["summary"]["fail_count"] == 0
+            assert v_event["summary"]["overall"] == "passed"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_read_phase_proposal_returns_not_ready_until_generated(monkeypatch):
     app.dependency_overrides[get_db] = override_get_db
     mocked_orchestration = AsyncMock()

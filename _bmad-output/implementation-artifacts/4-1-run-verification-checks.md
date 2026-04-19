@@ -1,6 +1,6 @@
 # Story 4.1: Run Verification Checks
 
-Status: review
+Status: done
 
 <!-- Ultimate context engine analysis completed - comprehensive developer guide created -->
 
@@ -36,6 +36,12 @@ so that I can ensure the quality and correctness of generated artifacts.
 - [x] **Tests** (AC: 1–5)
   - [x] Backend: extend [`backend/tests/test_runs.py`](backend/tests/test_runs.py) (and integration tests only if needed) to assert: after successful `POST .../phases/{phase}/start`, run JSON includes verification summary, timeline contains new event type, ordering is correct vs `proposal_generated`.
   - [x] Negative case: at least one check fails on a controlled fixture/monkeypatch—results still persisted and visible; phase still reaches `awaiting-approval` unless a later story changes gating (**4.5** owns blocking progression—**do not** implement advance-blocking here unless PRD explicitly requires it for 4.1; current AC does not).
+
+### Review Findings
+
+- [x] [Review][Patch] Remove accidentally committed build/runtime artifacts from version control — Untrack `backend/**/__pycache__/**`, `**/*.pyc` touched in the Story 4.1 commit, and `frontend/node_modules/.vite/**/results.json` (`.gitignore` already lists these; use `git rm -r --cached` on tracked paths so they stop reappearing in diffs). [_bmad-output/implementation-artifacts/4-1-run-verification-checks.md:n/a]
+- [x] [Review][Patch] Add API-level test coverage for the **modify/regenerate** proposal path — Assert `modify_phase_proposal` persists `proposal_artifacts[phase].verification` and emits `verification_checks_completed` before `proposal_regenerated` with correct ordering (parity with phase-start tests). [backend/tests/test_runs.py:n/a]
+- [x] [Review][Defer] Baseline verification checks accept `resolved_context_snapshot` but do not read it yet — deferred, reserved for Story 4.2 registered checks / context-aware rules. [backend/services/verification.py:337-353] — deferred, pre-existing
 
 ## Dev Notes
 
