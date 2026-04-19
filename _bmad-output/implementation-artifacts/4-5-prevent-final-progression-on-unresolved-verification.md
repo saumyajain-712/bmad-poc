@@ -1,6 +1,6 @@
 # Story 4.5: Prevent Final Progression on Unresolved Verification
 
-Status: review
+Status: done
 
 <!-- Ultimate context engine analysis completed - comprehensive developer guide created -->
 
@@ -42,6 +42,14 @@ so that unreliable or incorrect artifacts do not proceed to subsequent phases (*
   - [x] Add backend tests for: post-correction passing verification allows progression again.
   - [x] Add deterministic assertions for repeated-run gate outcomes (`FR38`) and stable event payload ordering.
   - [x] Add targeted frontend tests for blocked-state messaging/event rendering where applicable.
+
+### Review Findings
+
+- [x] [Review][Patch] Gate blocks progression when `verification.overall == "failed"` even if unresolved critical count is zero, which over-enforces AC1's critical-mismatch rule [backend/sql_app/crud.py:157]
+- [x] [Review][Patch] Duplicate `verification_gate_blocked` events can be appended on repeated blocked attempts because dedupe only checks the latest `phase-transition-blocked` event [backend/sql_app/crud.py:247]
+- [x] [Review][Patch] `/runs/{id}/resume` returns a generic conflict message and no `blocker` payload for `unresolved_verification_blocker`, causing endpoint contract mismatch with `/phases/advance` [backend/api/v1/endpoints/runs.py:960]
+- [x] [Review][Patch] Resume-blocked attempts do not append a `verification_gate_blocked` event with unresolved details, limiting observability required by AC3 [backend/sql_app/crud.py:1521]
+- [x] [Review][Patch] Generated runtime artifacts (`__pycache__` and Vite test cache result file) were included in the reviewed commit and should be excluded from source control [backend/api/v1/endpoints/__pycache__/runs.cpython-311.pyc:1]
 
 ## Dev Notes
 

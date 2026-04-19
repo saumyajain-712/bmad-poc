@@ -127,6 +127,9 @@ def _build_verification_blocker(
     overall = verification_artifact.get("overall")
     if not isinstance(overall, str):
         return None
+    normalized_overall = overall.strip().lower()
+    if not normalized_overall:
+        return None
 
     checks = (
         verification_artifact.get("checks")
@@ -154,15 +157,13 @@ def _build_verification_blocker(
             }
         )
 
-    if overall == "passed":
-        return None
-    if not unresolved_critical_checks and overall != "failed":
+    if not unresolved_critical_checks:
         return None
 
     return {
         "error_code": "unresolved_verification_blocker",
         "message": "Progression blocked until unresolved critical verification mismatches are fixed.",
-        "verification_overall": overall,
+        "verification_overall": normalized_overall,
         "unresolved_critical_count": len(unresolved_critical_checks),
         "unresolved_critical_checks": unresolved_critical_checks,
         "next_action": "Apply or implement corrective changes and re-run verification.",
@@ -252,17 +253,72 @@ def _is_duplicate_blocked_event(
     reason: str,
     proposal_revision: int | None,
 ) -> bool:
-    if not events:
-        return False
-    latest = events[-1]
-    if not isinstance(latest, dict):
+    latest = None
+    for event in reversed(events):
+        if isinstance(event, dict) and event.get("event_type") == "phase-transition-blocked":
+            latest = event
+            break
+    if latest is None:
         return False
     return (
-        latest.get("event_type") == "phase-transition-blocked"
-        and latest.get("phase") == phase
+        latest.get("phase") == phase
         and latest.get("attempted_action") == attempted_action
         and latest.get("reason") == reason
         and latest.get("proposal_revision") == proposal_revision
+    )
+
+
+def _is_duplicate_verification_gate_event(
+    events: list[object],
+    *,
+    phase: str,
+    attempted_action: str,
+    proposal_revision: int | None,
+    blocker: dict[str, object] | None,
+) -> bool:
+    latest = None
+    for event in reversed(events):
+        if isinstance(event, dict) and event.get("event_type") == "verification_gate_blocked":
+            latest = event
+            break
+    if latest is None:
+        return False
+    return (
+        latest.get("phase") == phase
+        and latest.get("attempted_action") == attempted_action
+        and latest.get("proposal_revision") == proposal_revision
+        and latest.get("blocker") == (blocker or {})
+    )
+
+
+def _append_verification_gate_blocked_event(
+    events: list[dict],
+    *,
+    run_id: int,
+    phase: str,
+    attempted_action: str,
+    proposal_revision: int | None,
+    reason: str,
+    blocker: dict[str, object] | None,
+) -> None:
+    if _is_duplicate_verification_gate_event(
+        events,
+        phase=phase,
+        attempted_action=attempted_action,
+        proposal_revision=proposal_revision,
+        blocker=blocker,
+    ):
+        return
+    events.append(
+        {
+            "event_type": "verification_gate_blocked",
+            "run_id": run_id,
+            "phase": phase,
+            "attempted_action": attempted_action,
+            "proposal_revision": proposal_revision,
+            "reason": reason,
+            "blocker": blocker or {},
+        }
     )
 
 
@@ -302,26 +358,15 @@ def record_blocked_transition_attempt(
         proposal_revision=proposal_revision,
     )
     if reason == "unresolved_verification_blocker":
-        latest = events[-1] if events else {}
-        if not (
-            isinstance(latest, dict)
-            and latest.get("event_type") == "verification_gate_blocked"
-            and latest.get("phase") == phase
-            and latest.get("attempted_action") == attempted_action
-            and latest.get("proposal_revision") == proposal_revision
-            and latest.get("blocker") == blocker
-        ):
-            events.append(
-                {
-                    "event_type": "verification_gate_blocked",
-                    "run_id": locked_run.id,
-                    "phase": phase,
-                    "attempted_action": attempted_action,
-                    "proposal_revision": proposal_revision,
-                    "reason": reason,
-                    "blocker": blocker or {},
-                }
-            )
+        _append_verification_gate_blocked_event(
+            events,
+            run_id=locked_run.id,
+            phase=phase,
+            attempted_action=attempted_action,
+            proposal_revision=proposal_revision,
+            reason=reason,
+            blocker=blocker,
+        )
     locked_run.context_events = events
     db.add(locked_run)
     db.commit()
@@ -1427,6 +1472,7 @@ def resume_run_orchestration(
     )
 
     conflict_reason: str | None = None
+    verification_blocker: dict[str, object] | None = None
     no_op = False
     if normalized_decision == "clarify":
         if not (locked_run.resolved_input_context or "").strip():
@@ -1466,6 +1512,7 @@ def resume_run_orchestration(
             conflict_reason = "phase_not_approved"
         elif isinstance(proposal, dict) and _build_verification_blocker(proposal) is not None:
             conflict_reason = "unresolved_verification_blocker"
+            verification_blocker = _build_verification_blocker(proposal)
         elif locked_run.current_phase == expected_phase:
             no_op = True
         else:
@@ -1519,6 +1566,20 @@ def resume_run_orchestration(
                 no_op = False
 
     if conflict_reason is not None:
+        if conflict_reason == "unresolved_verification_blocker":
+            _append_verification_gate_blocked_event(
+                events,
+                run_id=locked_run.id,
+                phase=expected_phase or current_phase or "unknown",
+                attempted_action="resume",
+                proposal_revision=(
+                    proposal.get("revision")
+                    if isinstance(proposal, dict) and isinstance(proposal.get("revision"), int)
+                    else None
+                ),
+                reason=conflict_reason,
+                blocker=verification_blocker,
+            )
         _append_resume_event(
             events,
             event_type="resume-failed",

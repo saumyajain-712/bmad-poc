@@ -970,11 +970,32 @@ def resume_run_from_current_state(
             status_code=409,
             detail={
                 "error_code": outcome,
-                "message": "Resume request is not valid for the current run state.",
+                "message": (
+                    "Resume request is blocked due to unresolved verification mismatches."
+                    if outcome == "unresolved_verification_blocker"
+                    else "Resume request is not valid for the current run state."
+                ),
                 "run_id": resumed_run.id,
                 "decision_type": decision_type,
                 "current_status": resumed_run.status,
                 "current_phase": resumed_run.current_phase,
+                "blocker": (
+                    crud.evaluate_transition_decision_gate(
+                        resumed_run,
+                        phase=(
+                            orchestration.get_next_phase(
+                                resumed_run.current_phase_index
+                                if resumed_run.current_phase_index is not None
+                                else -1
+                            )
+                            or resumed_run.current_phase
+                            or ""
+                        ),
+                        attempted_action="resume",
+                    )[3]
+                    if outcome == "unresolved_verification_blocker"
+                    else None
+                ),
             },
         )
 

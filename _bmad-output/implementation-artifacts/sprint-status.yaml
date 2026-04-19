@@ -71,7 +71,7 @@ development_status:
   4-2-detect-ui-api-mismatches: done
   4-3-propose-targeted-correction: done
   4-4-apply-approved-corrections: done
-  4-5-prevent-final-progression-on-unresolved-verification: review
+  4-5-prevent-final-progression-on-unresolved-verification: done
   4-6-review-verification-outcomes-and-corrections: backlog
   epic-4-retrospective: optional
   epic-5: backlog
