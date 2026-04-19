@@ -1,49 +1,58 @@
 import React, { useEffect, useState } from 'react';
 import { TOOL_CALL_COMPLETED_EVENT_TYPE, type RunTimelineEvent } from '../../services/bmadService';
 import EventDetailPanel from './EventDetailPanel';
-import { summarizeToolPayload } from './toolEventPresentation';
+import {
+  classifyTimelineRowVariant,
+  effectiveScopePhaseForRow,
+  formatEventDetailForTimeline,
+  getPhaseDisplayName,
+  type TimelineRowVariant,
+} from './phaseTimelinePresentation';
 
 interface RunTimelineProps {
   events: RunTimelineEvent[];
 }
 
-const formatEventDetail = (event: RunTimelineEvent): string => {
-  if (event.event_type === TOOL_CALL_COMPLETED_EVENT_TYPE) {
-    const name = event.tool_name || 'unknown_tool';
-    if (name === 'web_search') {
-      const input = typeof event.tool_input === 'object' && event.tool_input !== null
-        ? (event.tool_input as Record<string, unknown>)
-        : {};
-      const output = typeof event.tool_output === 'object' && event.tool_output !== null
-        ? (event.tool_output as Record<string, unknown>)
-        : {};
-      const querySummary = summarizeToolPayload(input.query ?? '');
-      const resultSummary = summarizeToolPayload(output.results ?? []);
-      return `Tool: web_search | query: ${querySummary} | results: ${resultSummary}`;
-    }
-    const inSummary = summarizeToolPayload(event.tool_input);
-    const outSummary = summarizeToolPayload(event.tool_output);
-    return `Tool: ${name} | in: ${inSummary} | out: ${outSummary}`;
+function liStyleForVariant(variant: TimelineRowVariant, isTool: boolean): React.CSSProperties {
+  if (variant === 'tool' || isTool) {
+    return {
+      marginBottom: 6,
+      padding: '6px 8px',
+      borderLeft: '3px solid #5bc0de',
+      background: '#f4fafc',
+      fontFamily: 'Consolas, ui-monospace, monospace',
+      fontSize: 13,
+    };
   }
-
-  if (event.event_type === 'phase-status-changed') {
-    return `${event.old_status || 'unknown'} -> ${event.new_status || 'unknown'} (${event.reason || 'n/a'})`;
+  if (variant === 'phase-transition') {
+    return {
+      marginBottom: 6,
+      padding: '8px 10px',
+      borderLeft: '4px solid #6f42c1',
+      background: '#f3edff',
+      fontSize: 13,
+    };
   }
-
-  if (event.previous_phase || event.next_phase) {
-    return `${event.previous_phase || 'start'} -> ${event.next_phase || 'n/a'}`;
+  if (variant === 'phase-governance') {
+    return {
+      marginBottom: 6,
+      padding: '6px 8px',
+      borderLeft: '3px solid #ec971f',
+      background: '#fffbf2',
+      fontSize: 13,
+    };
   }
-
-  if (event.context_source || event.context_version !== undefined) {
-    return `source: ${event.context_source || 'n/a'}, version: ${event.context_version ?? 'n/a'}`;
+  if (variant === 'phase-status') {
+    return {
+      marginBottom: 6,
+      padding: '6px 8px',
+      borderLeft: '3px solid #5cb85c',
+      background: '#f4faf7',
+      fontSize: 13,
+    };
   }
-
-  if (event.error_summary) {
-    return event.error_summary;
-  }
-
-  return event.reason || 'No additional detail';
-};
+  return { marginBottom: 4 };
+}
 
 const formatTimestamp = (timestamp?: string): string => timestamp || 'timestamp unavailable';
 
@@ -67,6 +76,14 @@ const RunTimeline: React.FC<RunTimelineProps> = ({ events }) => {
     return null;
   }
 
+  // Single pass: working scope per row (phase-agnostic rows inherit prior scope; phase-transition uses next_phase).
+  let scopeCarry: string | null = null;
+  const rowScopes = events.map((event) => {
+    const rowScope = effectiveScopePhaseForRow(event, scopeCarry);
+    scopeCarry = rowScope;
+    return rowScope;
+  });
+
   return (
     <section
       aria-label="Run timeline"
@@ -83,25 +100,30 @@ const RunTimeline: React.FC<RunTimelineProps> = ({ events }) => {
         {events.map((event, index) => {
           const key = eventKey(event, index);
           const isTool = event.event_type === TOOL_CALL_COMPLETED_EVENT_TYPE;
+          const variant = isTool ? 'tool' : classifyTimelineRowVariant(event);
+          const rowScope = rowScopes[index] ?? null;
+          const phaseScopeBoundary =
+            index > 0 && rowScope !== rowScopes[index - 1];
+
           const expanded = expandedEventKey === key;
           const toggleId = `timeline-event-toggle-${index}`;
           const panelId = `timeline-event-detail-${index}`;
+          const baseLi = liStyleForVariant(variant, isTool);
+          const liStyles: React.CSSProperties = phaseScopeBoundary
+            ? {
+                ...baseLi,
+                marginTop: 14,
+                paddingTop: (baseLi.padding as string) || baseLi.paddingTop || 6,
+                borderTop: '2px solid #cfd8dc',
+              }
+            : baseLi;
 
           return (
             <li
               key={key}
-              style={
-                isTool
-                  ? {
-                      marginBottom: 6,
-                      padding: '6px 8px',
-                      borderLeft: '3px solid #5bc0de',
-                      background: '#f4fafc',
-                      fontFamily: 'Consolas, ui-monospace, monospace',
-                      fontSize: 13,
-                    }
-                  : { marginBottom: 4 }
-              }
+              data-timeline-variant={variant}
+              data-phase-scope-boundary={phaseScopeBoundary ? 'true' : undefined}
+              style={liStyles}
             >
               <div
                 style={{
@@ -134,17 +156,25 @@ const RunTimeline: React.FC<RunTimelineProps> = ({ events }) => {
                 <span style={isTool ? { fontFamily: 'inherit' } : undefined}>
                   <strong>{formatTimestamp(event.timestamp)}</strong>
                   {' | '}
-                  {event.phase || 'unscoped'}
+                  {getPhaseDisplayName(event.phase) === '—' ? 'unscoped' : getPhaseDisplayName(event.phase)}
                   {' | '}
                   {isTool ? (
                     <span style={{ color: '#31708f' }}>
+                      <strong>{event.event_type}</strong>
+                    </span>
+                  ) : variant === 'phase-transition' ? (
+                    <span style={{ color: '#5e2e9c' }}>
+                      <strong>{event.event_type}</strong>
+                    </span>
+                  ) : variant === 'phase-governance' || variant === 'phase-status' ? (
+                    <span style={{ color: '#555' }}>
                       <strong>{event.event_type}</strong>
                     </span>
                   ) : (
                     event.event_type
                   )}
                   {' | '}
-                  {formatEventDetail(event)}
+                  {formatEventDetailForTimeline(event)}
                 </span>
               </div>
               {expanded ? (

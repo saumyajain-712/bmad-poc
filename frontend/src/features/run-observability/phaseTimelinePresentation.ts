@@ -1,0 +1,131 @@
+import { TOOL_CALL_COMPLETED_EVENT_TYPE, type RunTimelineEvent } from '../../services/bmadService';
+import { summarizeToolPayload } from './toolEventPresentation';
+
+/** Human-readable labels for timeline (aligned with FR17). */
+const PHASE_DISPLAY_NAMES: Record<string, string> = {
+  prd: 'PRD',
+  architecture: 'Architecture',
+  stories: 'Stories',
+  code: 'Code',
+};
+
+export function getPhaseDisplayName(phaseId: string | null | undefined): string {
+  if (phaseId == null || phaseId === '') return '—';
+  return PHASE_DISPLAY_NAMES[phaseId] ?? phaseId;
+}
+
+export type TimelineRowVariant =
+  | 'tool'
+  | 'phase-transition'
+  | 'phase-governance'
+  | 'phase-status'
+  | 'default';
+
+const PHASE_GOVERNANCE_TYPES = new Set([
+  'phase-approved',
+  'phase-awaiting-transition',
+  'phase-transition-blocked',
+  'proposal_generated',
+  'phase-context-consumed',
+]);
+
+/**
+ * Maps API event_type (+ optional reason) to a row presentation variant.
+ * Tool rows stay isolated from phase styling (Story 3.2).
+ */
+export function classifyTimelineRowVariant(event: RunTimelineEvent): TimelineRowVariant {
+  if (event.event_type === TOOL_CALL_COMPLETED_EVENT_TYPE) {
+    return 'tool';
+  }
+  if (event.event_type === 'phase-transition') {
+    return 'phase-transition';
+  }
+  if (event.event_type === 'phase-status-changed') {
+    return 'phase-status';
+  }
+  if (PHASE_GOVERNANCE_TYPES.has(event.event_type)) {
+    return 'phase-governance';
+  }
+  return 'default';
+}
+
+/**
+ * Effective “working phase” for this row: transition uses next_phase; else event.phase;
+ * else carry forward previous scope (phase-agnostic rows stay under the last known phase).
+ */
+export function effectiveScopePhaseForRow(
+  event: RunTimelineEvent,
+  previousScope: string | null,
+): string | null {
+  if (event.event_type === 'phase-transition' && event.next_phase) {
+    return event.next_phase;
+  }
+  if (event.phase) {
+    return event.phase;
+  }
+  return previousScope;
+}
+
+export function formatPhaseTransitionSummary(event: RunTimelineEvent): string {
+  const from = getPhaseDisplayName(event.previous_phase ?? undefined);
+  const to = getPhaseDisplayName(event.next_phase ?? undefined);
+  const parts = [`Phase transition: ${from} → ${to}`];
+  if (event.trigger && event.trigger.trim()) {
+    parts.push(`trigger: ${event.trigger}`);
+  }
+  return parts.join(' · ');
+}
+
+export function formatEventDetailForTimeline(event: RunTimelineEvent): string {
+  if (event.event_type === TOOL_CALL_COMPLETED_EVENT_TYPE) {
+    const name = event.tool_name || 'unknown_tool';
+    if (name === 'web_search') {
+      const input = typeof event.tool_input === 'object' && event.tool_input !== null
+        ? (event.tool_input as Record<string, unknown>)
+        : {};
+      const output = typeof event.tool_output === 'object' && event.tool_output !== null
+        ? (event.tool_output as Record<string, unknown>)
+        : {};
+      const querySummary = summarizeToolPayload(input.query ?? '');
+      const resultSummary = summarizeToolPayload(output.results ?? []);
+      return `Tool: web_search | query: ${querySummary} | results: ${resultSummary}`;
+    }
+    const inSummary = summarizeToolPayload(event.tool_input);
+    const outSummary = summarizeToolPayload(event.tool_output);
+    return `Tool: ${name} | in: ${inSummary} | out: ${outSummary}`;
+  }
+
+  if (event.event_type === 'phase-transition') {
+    return formatPhaseTransitionSummary(event);
+  }
+
+  if (event.event_type === 'phase-status-changed') {
+    const phaseLabel = getPhaseDisplayName(event.phase);
+    return `${phaseLabel}: ${event.old_status || 'unknown'} → ${event.new_status || 'unknown'} (${event.reason || 'n/a'})`;
+  }
+
+  if (event.event_type === 'phase-approved' || event.event_type === 'phase-awaiting-transition') {
+    const phaseLabel = getPhaseDisplayName(event.phase);
+    const detail = event.reason ? ` · ${event.reason}` : '';
+    return `${event.event_type.replace(/-/g, ' ')} · ${phaseLabel}${detail}`;
+  }
+
+  if (event.event_type === 'phase-transition-blocked') {
+    const phaseLabel = getPhaseDisplayName(event.phase);
+    return `Blocked · ${phaseLabel}${event.reason ? ` · ${event.reason}` : ''}`;
+  }
+
+  if (event.previous_phase || event.next_phase) {
+    return `${getPhaseDisplayName(event.previous_phase ?? undefined)} → ${getPhaseDisplayName(event.next_phase ?? undefined)}`;
+  }
+
+  if (event.context_source || event.context_version !== undefined) {
+    return `source: ${event.context_source || 'n/a'}, version: ${event.context_version ?? 'n/a'}`;
+  }
+
+  if (event.error_summary) {
+    return event.error_summary;
+  }
+
+  return event.reason || 'No additional detail';
+}

@@ -30,8 +30,9 @@ describe('RunTimeline', () => {
 
     const rows = screen.getAllByRole('listitem');
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toHaveTextContent('2026-04-17T16:00:00Z | prd | context-resolved');
-    expect(rows[1]).toHaveTextContent('2026-04-17T16:00:01Z | prd | phase-status-changed');
+    expect(rows[0]).toHaveTextContent('2026-04-17T16:00:00Z | PRD | context-resolved');
+    expect(rows[1]).toHaveTextContent('2026-04-17T16:00:01Z | PRD | phase-status-changed');
+    expect(rows[1]).toHaveTextContent('PRD: pending → in-progress');
   });
 
   it('appends new events without dropping existing rows', () => {
@@ -86,7 +87,8 @@ describe('RunTimeline', () => {
     );
 
     const row = screen.getByRole('listitem');
-    expect(row).toHaveTextContent('2026-04-17T16:00:05Z | prd | tool-call-completed');
+    expect(row).toHaveTextContent('2026-04-17T16:00:05Z | PRD | tool-call-completed');
+    expect(row).toHaveAttribute('data-timeline-variant', 'tool');
     expect(row).toHaveTextContent('Tool: read_file');
     expect(row).toHaveTextContent('in:');
     expect(row).toHaveTextContent('out:');
@@ -113,6 +115,7 @@ describe('RunTimeline', () => {
     );
 
     const row = screen.getByRole('listitem');
+    expect(row).toHaveAttribute('data-timeline-variant', 'tool');
     expect(row).toHaveTextContent('Tool: web_search');
     expect(row).toHaveTextContent('query:');
     expect(row).toHaveTextContent('phase sequencing best practices');
@@ -344,5 +347,144 @@ describe('RunTimeline', () => {
     expect(row).toHaveTextContent('unscoped');
     expect(row).toHaveTextContent('context-resolved');
     expect(row).toHaveTextContent('source: n/a, version: 1');
+  });
+
+  it('renders phase-transition rows with display names, trigger, and distinct variant (FR17)', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: 'phase-transition',
+            phase: 'prd',
+            previous_phase: 'prd',
+            next_phase: 'architecture',
+            trigger: 'advance',
+            timestamp: '2026-04-17T16:00:10Z',
+          },
+        ]}
+      />
+    );
+
+    const row = screen.getByRole('listitem');
+    expect(row).toHaveAttribute('data-timeline-variant', 'phase-transition');
+    expect(row).toHaveTextContent('Phase transition: PRD → Architecture');
+    expect(row).toHaveTextContent('trigger: advance');
+  });
+
+  it('classifies phase-approved and phase-status-changed as governance/status variants', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: 'phase-approved',
+            phase: 'prd',
+            reason: 'human approved',
+            timestamp: '2026-04-17T16:00:11Z',
+          },
+          {
+            event_type: 'phase-status-changed',
+            phase: 'architecture',
+            old_status: 'pending',
+            new_status: 'in-progress',
+            reason: 'phase started',
+            timestamp: '2026-04-17T16:00:12Z',
+          },
+        ]}
+      />
+    );
+
+    const rows = screen.getAllByRole('listitem');
+    expect(rows[0]).toHaveAttribute('data-timeline-variant', 'phase-governance');
+    expect(rows[0]).toHaveTextContent('phase-approved');
+    expect(rows[1]).toHaveAttribute('data-timeline-variant', 'phase-status');
+    expect(rows[1]).toHaveTextContent('Architecture: pending → in-progress');
+  });
+
+  it('classifies phase-awaiting-transition and phase-transition-blocked as phase-governance (AC2)', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: 'phase-awaiting-transition',
+            phase: 'prd',
+            reason: 'waiting for approval',
+            timestamp: '2026-04-17T16:00:13Z',
+          },
+          {
+            event_type: 'phase-transition-blocked',
+            phase: 'architecture',
+            reason: 'advance not allowed',
+            timestamp: '2026-04-17T16:00:14Z',
+          },
+        ]}
+      />
+    );
+
+    const rows = screen.getAllByRole('listitem');
+    expect(rows[0]).toHaveAttribute('data-timeline-variant', 'phase-governance');
+    expect(rows[0]).toHaveTextContent('phase-awaiting-transition');
+    expect(rows[0]).toHaveTextContent('phase awaiting transition');
+    expect(rows[0]).toHaveTextContent('waiting for approval');
+    expect(rows[1]).toHaveAttribute('data-timeline-variant', 'phase-governance');
+    expect(rows[1]).toHaveTextContent('phase-transition-blocked');
+    expect(rows[1]).toHaveTextContent('Blocked · Architecture');
+    expect(rows[1]).toHaveTextContent('advance not allowed');
+  });
+
+  it('adds a phase-scope boundary cue when working phase changes between adjacent rows', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: 'context-resolved',
+            phase: 'prd',
+            timestamp: '2026-04-17T16:00:00Z',
+            context_source: 'resolved_input_context',
+            context_version: 1,
+          },
+          {
+            event_type: 'phase-status-changed',
+            phase: 'architecture',
+            old_status: 'pending',
+            new_status: 'in-progress',
+            reason: 'phase started',
+            timestamp: '2026-04-17T16:00:01Z',
+          },
+        ]}
+      />
+    );
+
+    const rows = screen.getAllByRole('listitem');
+    expect(rows[0]).not.toHaveAttribute('data-phase-scope-boundary');
+    expect(rows[1]).toHaveAttribute('data-phase-scope-boundary', 'true');
+  });
+
+  it('keeps tool row styling and variant when mixed with phase governance rows', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: 'phase-transition',
+            previous_phase: 'prd',
+            next_phase: 'architecture',
+            trigger: 'approval',
+            timestamp: '2026-04-17T16:00:10Z',
+          },
+          {
+            event_type: TOOL_CALL_COMPLETED_EVENT_TYPE,
+            phase: 'architecture',
+            timestamp: '2026-04-17T16:00:11Z',
+            tool_name: 'read_file',
+            tool_input: {},
+            tool_output: {},
+          },
+        ]}
+      />
+    );
+
+    const rows = screen.getAllByRole('listitem');
+    expect(rows[0]).toHaveAttribute('data-timeline-variant', 'phase-transition');
+    expect(rows[1]).toHaveAttribute('data-timeline-variant', 'tool');
+    expect(rows[1]).toHaveTextContent('tool-call-completed');
   });
 });
