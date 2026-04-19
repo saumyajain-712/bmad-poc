@@ -1,6 +1,6 @@
 # Story 3.6: Identify Failure Context from UI
 
-Status: review
+Status: done
 
 <!-- Ultimate context engine analysis completed - comprehensive developer guide created -->
 
@@ -40,6 +40,13 @@ so that I can quickly troubleshoot and diagnose issues without backend-only inve
   - [x] Extend `frontend/src/features/run-observability/__tests__/RunTimeline.test.tsx` with fixtures for `proposal_generation_failed` (both steps), `resume-failed`, `phase-status-changed`→failed, and a tool event with `error_summary`; assert `data-timeline-variant`, summary substring(s), and detail panel labels.
 - [x] **Verification**
   - [x] `npm run test`, `npm run lint` from `frontend/`; backend tests only if backend files change.
+
+### Review Findings
+
+- [x] [Review][Patch] Remove tracked Vite/Vitest cache file from version control — commit `9d24894` includes `frontend/node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/results.json` under `node_modules`; it should not be in the repo. Run `git rm --cached` on that path (or delete and ensure `.gitignore` keeps it untracked) so caches are not shared or reviewed. *(Resolved: `git rm -r --cached frontend/node_modules/.vite`.)*
+- [x] [Review][Patch] Failure rows that are also `tool-call-completed` events still receive monospace styling via `liStyleForVariant(variant, isTool)` when `isTool` is true (`RunTimeline.tsx` ~17–24), which partially overlaps the visual language of successful tool rows and weakens AC1’s “distinct from tool” intent. Prefer sans-serif for all `failure` variants (ignore `isTool` when `variant === 'failure'`). *(Resolved: failure variant no longer sets tool monospace.)*
+- [x] [Review][Patch] Whitespace-only `error_summary` on `proposal_generation_failed` is truthy but normalizes to an empty one-line hint in `formatFailureEventSummary` (`phaseTimelinePresentation.ts` ~96–102) without falling back to `reason` or a default — collapsed summary can end with a bare separator. Trim or treat whitespace-only as missing before building the hint. *(Resolved: trim + `?.` chain for hint sources.)*
+- [x] [Review][Defer] Final `return` in `formatFailureEventSummary` (`phaseTimelinePresentation.ts` ~121) is unreachable given the current `isFailureTimelineEvent` set — deferred, pre-existing minor dead-code risk until new failure types are added.
 
 ## Dev Notes
 

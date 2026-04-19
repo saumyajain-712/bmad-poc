@@ -488,6 +488,26 @@ describe('RunTimeline', () => {
     expect(rows[1]).toHaveTextContent('tool-call-completed');
   });
 
+  it('falls back to reason when proposal_generation_failed error_summary is whitespace-only', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: 'proposal_generation_failed',
+            phase: 'stories',
+            step: 'generate-phase-proposal',
+            error_summary: '   \n  ',
+            reason: 'fallback reason',
+            timestamp: '2026-04-17T16:00:20Z',
+          },
+        ]}
+      />
+    );
+
+    const row = screen.getByRole('listitem');
+    expect(row).toHaveTextContent('fallback reason');
+  });
+
   it('classifies proposal_generation_failed as failure variant with phase, step, and error hint in summary (FR18)', () => {
     render(
       <RunTimeline

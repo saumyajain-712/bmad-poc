@@ -96,29 +96,29 @@ export function formatFailureEventSummary(event: RunTimelineEvent): string {
   if (event.event_type === 'proposal_generation_failed') {
     const stepText = humanizeStep(event.step);
     const hint = truncateOneLine(
-      event.error_summary || event.reason || 'proposal generation failed',
+      event.error_summary?.trim() || event.reason?.trim() || 'proposal generation failed',
       MAX_FAILURE_ONE_LINE,
     );
     return `${phaseLabel} · ${stepText} · ${hint}`;
   }
 
   if (event.event_type === 'resume-failed') {
-    const hint = truncateOneLine(event.reason || 'resume failed', MAX_FAILURE_ONE_LINE);
+    const hint = truncateOneLine(event.reason?.trim() || 'resume failed', MAX_FAILURE_ONE_LINE);
     return `${phaseLabel} · resume failed · ${hint}`;
   }
 
   if (event.event_type === 'phase-status-changed' && event.new_status === 'failed') {
-    const hint = truncateOneLine(event.reason || 'phase status failed', MAX_FAILURE_ONE_LINE);
+    const hint = truncateOneLine(event.reason?.trim() || 'phase status failed', MAX_FAILURE_ONE_LINE);
     return `${phaseLabel} · status → failed · ${hint}`;
   }
 
   if (event.event_type === TOOL_CALL_COMPLETED_EVENT_TYPE && event.error_summary) {
     const name = event.tool_name || 'tool';
-    const hint = truncateOneLine(event.error_summary, MAX_FAILURE_ONE_LINE);
+    const hint = truncateOneLine(event.error_summary.trim(), MAX_FAILURE_ONE_LINE);
     return `${phaseLabel} · tool ${name} · ${hint}`;
   }
 
-  return truncateOneLine(event.error_summary || event.reason || 'failure', MAX_FAILURE_ONE_LINE);
+  return truncateOneLine(event.error_summary?.trim() || event.reason?.trim() || 'failure', MAX_FAILURE_ONE_LINE);
 }
 
 /**

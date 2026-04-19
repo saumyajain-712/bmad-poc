@@ -20,7 +20,6 @@ function liStyleForVariant(variant: TimelineRowVariant, isTool: boolean): React.
       padding: '6px 8px',
       borderLeft: '4px solid #a94442',
       background: '#fdf2f2',
-      fontFamily: isTool ? 'Consolas, ui-monospace, monospace' : undefined,
       fontSize: 13,
     };
   }

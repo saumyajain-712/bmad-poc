@@ -36,3 +36,7 @@
 ## Deferred from: code review of 3-4-display-mock-web-search-results.md (2026-04-19)
 
 - Repository-wide tracking of `__pycache__`, test `.pyc` caches, and related bytecode under `backend/` (and `venv`) remains a pre-existing hygiene issue; Story 3.4 adds another regenerated `.pyc` touch in the same class as prior Epic 3 reviews — cleanup is a broader repo maintenance task, not blocking functional AC for this story.
+
+## Deferred from: code review of 3-6-identify-failure-context-from-ui.md (2026-04-19)
+
+- Final fallback return in `formatFailureEventSummary` is unreachable with the current `isFailureTimelineEvent` predicates (`frontend/src/features/run-observability/phaseTimelinePresentation.ts`) — minor dead-code / future-hazard only; revisit when new failure event types are introduced.
