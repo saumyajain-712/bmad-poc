@@ -1,6 +1,6 @@
 # Story 5.1: Produce Working Todo API and UI Output
 
-Status: review
+Status: in-progress
 
 <!-- Ultimate context engine analysis completed - comprehensive developer guide created -->
 
@@ -39,6 +39,11 @@ so that developers can immediately see and interact with the agent-generated cod
   - [x] Add backend tests in `backend/tests/test_runs.py` validating code-phase generated output includes Todo API/UI slice indicators and is deterministic across repeated runs.
   - [x] Add/adjust verification tests (if needed) to ensure mismatch detection/correction loop remains functional after code-phase output enrichment.
   - [x] Add frontend tests for generated-output presentation surfaces if UI rendering is changed.
+
+### Review Findings
+
+- [x] [Review][Defer] API/UI create contract mismatch vs "working output" intent [backend/services/orchestration.py:143] — deferred, pre-existing. Reason: Intentional mismatch by design — required for Epic 4 self-correction demo flow (Stories 4.2-4.4); aligning now would break the verification/correction narrative.
+- [x] [Review][Patch] Remove tracked Python cache artifacts from source control [backend/services/__pycache__/orchestration.cpython-311.pyc:1]
 
 ## Dev Notes
 

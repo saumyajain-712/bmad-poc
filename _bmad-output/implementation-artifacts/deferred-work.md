@@ -53,3 +53,7 @@
 
 - Timeline event dedupe/equality still ignores several backend event keys in blocked/transition paths (`frontend/src/features/run-initiation/RunInitiationForm.tsx`) — pre-existing timeline consistency hardening.
 - Frontend event typing does not model several backend event fields used for deterministic timeline differentiation (`frontend/src/services/bmadService.ts`) — pre-existing type alignment gap.
+
+## Deferred from: code review of 5-1-produce-working-todo-api-and-ui-output.md (2026-04-19)
+
+- API/UI create contract mismatch in generated code-phase proposal (`backend/services/orchestration.py`) is intentionally preserved for Epic 4 self-correction demo flow (Stories 4.2-4.4); aligning now would break the verification/correction narrative.
