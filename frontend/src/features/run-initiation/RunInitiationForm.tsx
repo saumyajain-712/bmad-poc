@@ -13,6 +13,7 @@ type RunSnapshot = Pick<
   | 'context_events'
   | 'phase_statuses'
   | 'phase_status_badges'
+  | 'current_phase_proposal'
 >;
 
 const sortKeysDeep = (value: unknown): unknown => {
@@ -61,6 +62,8 @@ const areEventsEqual = (left: RunTimelineEvent, right: RunTimelineEvent): boolea
   && optionalEqual(left.step, right.step)
   && optionalEqual(left.error_summary, right.error_summary)
   && artifactsEqual(left.artifact, right.artifact)
+  && JSON.stringify(left.summary ?? null) === JSON.stringify(right.summary ?? null)
+  && left.revision === right.revision
 );
 
 const mergeTimelineEvents = (
@@ -312,6 +315,58 @@ const RunInitiationForm: React.FC = () => {
                 ))}
               </ul>
             </>
+          )}
+          {latestRun.current_phase_proposal && typeof latestRun.current_phase_proposal === 'object'
+            && latestRun.current_phase_proposal.verification
+            && typeof latestRun.current_phase_proposal.verification === 'object' && (
+            <div
+              style={{
+                marginTop: 10,
+                marginBottom: 10,
+                padding: '8px 10px',
+                border: '1px solid #bce8f1',
+                borderRadius: '4px',
+                backgroundColor: '#f0f9fc',
+              }}
+            >
+              <p style={{ marginTop: 0, marginBottom: 6 }}>
+                <strong>Verification</strong>
+                {' '}
+                <span
+                  style={{
+                    padding: '2px 6px',
+                    borderRadius: 3,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    background:
+                      String((latestRun.current_phase_proposal.verification as Record<string, unknown>).overall) === 'passed'
+                        ? '#dff0d8'
+                        : '#f2dede',
+                    color:
+                      String((latestRun.current_phase_proposal.verification as Record<string, unknown>).overall) === 'passed'
+                        ? '#3c763d'
+                        : '#a94442',
+                  }}
+                >
+                  {String((latestRun.current_phase_proposal.verification as Record<string, unknown>).overall ?? '—')}
+                </span>
+              </p>
+              <details>
+                <summary style={{ cursor: 'pointer', fontSize: 13 }}>Checks</summary>
+                <ul style={{ marginBottom: 0, paddingLeft: 18, fontSize: 13 }}>
+                  {Array.isArray((latestRun.current_phase_proposal.verification as Record<string, unknown>).checks)
+                    ? ((latestRun.current_phase_proposal.verification as Record<string, { id?: string; passed?: boolean; message?: string }>).checks).map((c, idx) => (
+                      <li key={`${c.id ?? idx}-${idx}`} style={{ marginBottom: 4 }}>
+                        <span style={{ fontWeight: 600 }}>{c.id ?? 'check'}</span>
+                        {': '}
+                        {c.passed ? 'pass' : 'fail'}
+                        {c.message ? ` — ${c.message}` : ''}
+                      </li>
+                    ))
+                    : null}
+                </ul>
+              </details>
+            </div>
           )}
           <RunTimeline events={latestRun.context_events} />
         </section>

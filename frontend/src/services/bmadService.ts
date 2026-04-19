@@ -1,6 +1,9 @@
 /** Matches backend `orchestration.TOOL_CALL_COMPLETED_EVENT_TYPE` */
 export const TOOL_CALL_COMPLETED_EVENT_TYPE = 'tool-call-completed';
 
+/** Story 4.1 — deterministic verification gate completed (before proposal_generated / proposal_regenerated). */
+export const VERIFICATION_CHECKS_COMPLETED_EVENT_TYPE = 'verification_checks_completed';
+
 export interface RunTimelineEvent {
     event_type: string;
     run_id?: number;
@@ -23,6 +26,15 @@ export interface RunTimelineEvent {
     tool_name?: string;
     tool_input?: Record<string, unknown> | string;
     tool_output?: Record<string, unknown> | string;
+    /** Compact pass/fail counts from verification runner (Story 4.1) */
+    summary?: {
+        pass_count?: number;
+        fail_count?: number;
+        overall?: string;
+    };
+    /** Proposal revision when present on governance / verification events */
+    revision?: number;
+
     /** `resume-failed` / `resume-completed` (orchestration resume) */
     decision_type?: string;
     source_checkpoint?: string;

@@ -1,4 +1,8 @@
-import { TOOL_CALL_COMPLETED_EVENT_TYPE, type RunTimelineEvent } from '../../services/bmadService';
+import {
+    TOOL_CALL_COMPLETED_EVENT_TYPE,
+    VERIFICATION_CHECKS_COMPLETED_EVENT_TYPE,
+    type RunTimelineEvent,
+} from '../../services/bmadService';
 import { summarizeToolPayload } from './toolEventPresentation';
 
 /** Human-readable labels for timeline (aligned with FR17). */
@@ -64,6 +68,7 @@ const PHASE_GOVERNANCE_TYPES = new Set([
   'phase-transition-blocked',
   'proposal_generated',
   'phase-context-consumed',
+  VERIFICATION_CHECKS_COMPLETED_EVENT_TYPE,
 ]);
 
 /**
@@ -173,6 +178,15 @@ export function formatEventDetailForTimeline(event: RunTimelineEvent): string {
 
   if (event.event_type === 'phase-transition') {
     return formatPhaseTransitionSummary(event);
+  }
+
+  if (event.event_type === VERIFICATION_CHECKS_COMPLETED_EVENT_TYPE) {
+    const phaseLabel = getPhaseDisplayName(event.phase);
+    const s = event.summary;
+    const pass = s?.pass_count ?? '—';
+    const fail = s?.fail_count ?? '—';
+    const overall = s?.overall ?? '—';
+    return `${phaseLabel} · verification · pass ${pass} · fail ${fail} · ${overall}`;
   }
 
   if (event.event_type === 'phase-status-changed') {

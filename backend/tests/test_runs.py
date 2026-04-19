@@ -9,7 +9,7 @@ from backend.main import app
 from backend.api.v1.endpoints.runs import get_db
 from backend.sql_app import models
 from backend.sql_app.database import Base
-from backend.services import orchestration
+from backend.services import orchestration, verification
 
 # Setup test database
 SQLALCHEMY_DATABASE_URL = "sqlite://"
@@ -483,6 +483,128 @@ def test_phase_proposal_persists_tool_call_events_before_proposal_generated(monk
             assert web_search_event["tool_output"]["source"] == "simulated"
             assert web_search_event["tool_output"]["total"] == 3
             assert len(web_search_event["tool_output"]["results"]) == 3
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_phase_start_persists_verification_and_timeline_event(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            phase_start_response = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/start",
+            )
+            assert phase_start_response.status_code == 200
+
+            run_response = await client.get(f"/api/v1/runs/{run_id}")
+            assert run_response.status_code == 200
+            run_payload = run_response.json()
+            ver = run_payload["proposal_artifacts"]["prd"]["verification"]
+            assert ver["schema_version"] == 1
+            assert ver["overall"] == "passed"
+            assert ver["revision"] == 1
+            assert isinstance(ver["checks"], list)
+            assert len(ver["checks"]) >= 1
+            assert all("id" in c and "passed" in c for c in ver["checks"])
+
+            types = [e.get("event_type") for e in run_payload["context_events"] if isinstance(e, dict)]
+            assert "verification_checks_completed" in types
+            v_idx = types.index("verification_checks_completed")
+            pg_idx = types.index("proposal_generated")
+            assert v_idx < pg_idx
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_verification_timeline_event_after_tool_calls_before_proposal_generated(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+
+            run_response = await client.get(f"/api/v1/runs/{run_id}")
+            events = run_response.json()["context_events"]
+            types = [e.get("event_type") for e in events if isinstance(e, dict)]
+            pg_idx = types.index("proposal_generated")
+            v_idx = types.index("verification_checks_completed")
+            tool_idxs = [i for i, e in enumerate(events) if isinstance(e, dict) and e.get("event_type") == "tool-call-completed"]
+            assert all(i < v_idx for i in tool_idxs)
+            assert v_idx < pg_idx
+            v_event = events[v_idx]
+            assert v_event["phase"] == "prd"
+            assert v_event["revision"] == 1
+            assert v_event["summary"]["pass_count"] >= 1
+            assert v_event["summary"]["fail_count"] == 0
+            assert v_event["summary"]["overall"] == "passed"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_verification_failure_still_reaches_awaiting_approval(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    def _forced_fail(_phase, _proposal, _ctx):
+        return {
+            "id": "forced-fail",
+            "passed": False,
+            "message": "controlled failure",
+            "severity": "error",
+        }
+
+    monkeypatch.setattr(verification, "DEFAULT_VERIFICATION_CHECKS", (_forced_fail,))
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+
+            run_response = await client.get(f"/api/v1/runs/{run_id}")
+            run_payload = run_response.json()
+            assert run_payload["status"] == "awaiting-approval"
+            assert run_payload["phase_statuses"]["prd"] == "awaiting-approval"
+            ver = run_payload["proposal_artifacts"]["prd"]["verification"]
+            assert ver["overall"] == "failed"
+            assert any(not c["passed"] for c in ver["checks"])
 
     try:
         anyio.run(exercise)

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from . import models, schemas
-from backend.services import orchestration
+from backend.services import orchestration, verification
 
 
 STATUS_TRANSITIONS: dict[str, set[str]] = {
@@ -484,6 +484,16 @@ def generate_phase_proposal(
         context_version=db_run.context_version,
         revision=revision,
     )
+    resolved_ctx = (
+        db_run.resolved_input_context
+        if isinstance(db_run.resolved_input_context, str)
+        else None
+    )
+    proposal_payload["verification"] = verification.run_phase_verification(
+        phase=phase,
+        proposal_payload=proposal_payload,
+        resolved_context_snapshot=resolved_ctx,
+    )
     proposal_artifacts[phase] = proposal_payload
     db_run.proposal_artifacts = proposal_artifacts
 
@@ -506,6 +516,17 @@ def generate_phase_proposal(
         run_id=db_run.id,
         revision=revision,
         timestamp=tool_ts,
+    )
+    ver_summary = verification.verification_event_summary(
+        proposal_payload.get("verification") or {}
+    )
+    events.append(
+        {
+            "event_type": "verification_checks_completed",
+            "phase": phase,
+            "revision": proposal_payload["revision"],
+            "summary": ver_summary,
+        }
     )
     events.append(
         {
@@ -924,6 +945,16 @@ def modify_phase_proposal(
     regenerated_proposal["modification_feedback_summary"] = feedback_summary
     modification_history.append(modification_record)
     regenerated_proposal["modification_history"] = modification_history
+    resolved_ctx = (
+        locked_run.resolved_input_context
+        if isinstance(locked_run.resolved_input_context, str)
+        else None
+    )
+    regenerated_proposal["verification"] = verification.run_phase_verification(
+        phase=phase,
+        proposal_payload=regenerated_proposal,
+        resolved_context_snapshot=resolved_ctx,
+    )
     proposal_artifacts[phase] = regenerated_proposal
     locked_run.proposal_artifacts = proposal_artifacts
 
@@ -938,6 +969,17 @@ def modify_phase_proposal(
     )
     locked_run.phase_statuses = phase_statuses
     locked_run.status = "awaiting-approval"
+    ver_summary = verification.verification_event_summary(
+        regenerated_proposal.get("verification") or {}
+    )
+    events.append(
+        {
+            "event_type": "verification_checks_completed",
+            "phase": phase,
+            "revision": regenerated_proposal["revision"],
+            "summary": ver_summary,
+        }
+    )
     events.append(
         {
             "event_type": "proposal_regenerated",

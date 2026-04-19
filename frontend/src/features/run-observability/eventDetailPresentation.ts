@@ -1,5 +1,5 @@
 import type { RunTimelineEvent } from '../../services/bmadService';
-import { TOOL_CALL_COMPLETED_EVENT_TYPE } from '../../services/bmadService';
+import { TOOL_CALL_COMPLETED_EVENT_TYPE, VERIFICATION_CHECKS_COMPLETED_EVENT_TYPE } from '../../services/bmadService';
 import { formatRedactedJsonPretty } from './toolEventPresentation';
 
 export type DetailRow = { label: string; value: string; emphasis?: 'error' };
@@ -14,6 +14,16 @@ export function getNonToolDetailRows(event: RunTimelineEvent): DetailRow[] {
 
   if (event.error_summary) {
     rows.push({ label: 'Error summary', value: event.error_summary, emphasis: 'error' });
+  }
+
+  if (event.event_type === VERIFICATION_CHECKS_COMPLETED_EVENT_TYPE && event.summary) {
+    const s = event.summary;
+    rows.push({ label: 'Pass count', value: String(s.pass_count ?? '—') });
+    rows.push({ label: 'Fail count', value: String(s.fail_count ?? '—') });
+    rows.push({ label: 'Overall', value: String(s.overall ?? '—') });
+    if (event.revision !== undefined) {
+      rows.push({ label: 'Revision', value: String(event.revision) });
+    }
   }
 
   if (event.event_type === 'proposal_generation_failed') {

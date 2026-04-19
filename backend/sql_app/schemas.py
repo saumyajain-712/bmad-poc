@@ -85,10 +85,35 @@ class PhaseAdvanceResponse(BaseModel):
     status: str
 
 
+class ProposalVerificationCheck(BaseModel):
+    """Single deterministic check outcome (Story 4.1)."""
+
+    id: str
+    passed: bool
+    message: str = ""
+    severity: str = "error"
+
+
+class ProposalVerificationArtifact(BaseModel):
+    """Persisted under `proposal_artifacts[phase].verification` after each proposal revision."""
+
+    schema_version: int = 1
+    revision: int | None = None
+    ran_at: str
+    overall: str
+    checks: list[ProposalVerificationCheck] = Field(default_factory=list)
+
+
 class PhaseProposalResponse(BaseModel):
     run_id: int
     phase: str
-    proposal: dict
+    proposal: dict = Field(
+        ...,
+        description=(
+            "Proposal artifact JSON; includes optional `verification` "
+            "(shape: ProposalVerificationArtifact)."
+        ),
+    )
 
 
 class PhaseModificationRequest(BaseModel):
