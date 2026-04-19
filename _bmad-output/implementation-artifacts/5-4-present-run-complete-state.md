@@ -1,6 +1,6 @@
 # Story 5.4: Present Run-Complete State
 
-Status: review
+Status: done
 
 <!-- Ultimate context engine analysis completed - comprehensive developer guide created -->
 
@@ -116,8 +116,8 @@ Composer (Cursor agent)
 
 - Added `crud.derive_run_complete`: `status == phase-sequence-complete` and `final_output_review.verification_overview.blocked is False` (same blocker semantics as final output review payload).
 - Exposed `run_complete` on `GET /api/v1/runs/{id}` via `read_run` enrichment; optional on schema, defaults false for other responses.
-- UI: `RunInitiationForm` shows a success banner (`role="status"`, text + layout) above final output review when `run_complete` and review not blocked (defense in depth).
-- Tests: backend coverage for true/false/blocked; frontend RTL for banner visibility; canonical sequence test asserts `run_complete` stays consistent with `verification_overview.blocked`.
+- UI: `RunInitiationForm` shows a success banner (`role="status"`, text + layout) above final output review when `run_complete` and review not blocked (defense in depth). **Known limitation (POC):** the banner only appears when the client’s run snapshot includes GET-enriched fields (`run_complete` is not computed on initiate/clarification POST responses). The form does not poll `GET /runs/{id}` during normal flow; consumers that need the banner should load the run via `GET` (or extend the client later).
+- Tests: backend coverage for true/false/blocked; frontend RTL for banner visibility; `test_phase_sequence_progression_integration` asserts `run_complete` matches `final_output_review.verification_overview.blocked` (same rule as `derive_run_complete`).
 
 ### File List
 
@@ -125,6 +125,7 @@ Composer (Cursor agent)
 - backend/sql_app/schemas.py
 - backend/api/v1/endpoints/runs.py
 - backend/tests/test_runs.py
+- backend/tests/test_run_integration.py
 - frontend/src/services/bmadService.ts
 - frontend/src/features/run-initiation/RunInitiationForm.tsx
 - frontend/src/features/run-initiation/__tests__/RunInitiationForm.test.tsx
@@ -133,3 +134,10 @@ Composer (Cursor agent)
 ### Change Log
 
 - 2026-04-20: Story 5.4 — `run_complete` API flag, derive helper, Run complete banner, backend/frontend tests.
+- 2026-04-20: Code review — documented GET-only enrichment / form limitation (option 3); integration test asserts `run_complete` ↔ `verification_overview.blocked` invariant.
+
+### Review Findings
+
+- [x] [Review][Decision] SPA / GET enrichment — **Resolved (option 3):** Accepted POC scope: FR28 is satisfied for the API and for clients that load runs via `GET /api/v1/runs/{id}`. Documented the `RunInitiationForm` limitation in Completion Notes above (banner requires GET-enriched snapshot; no polling added).
+
+- [x] [Review][Patch] Integration test vs Completion Notes — **Resolved:** `test_phase_sequence_progression_integration` now asserts `run_complete` matches `not final_output_review.verification_overview.blocked` (same predicate as `derive_run_complete`). Completion Notes updated to describe this invariant.

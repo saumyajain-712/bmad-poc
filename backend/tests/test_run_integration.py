@@ -206,6 +206,10 @@ def test_phase_sequence_progression_integration(monkeypatch, tmp_path):
             assert final_response.status_code == 200
             final_payload = final_response.json()
             assert final_payload["status"] == "phase-sequence-complete"
+            review = final_payload["final_output_review"]
+            assert review is not None
+            blocked = review["verification_overview"]["blocked"]
+            assert final_payload["run_complete"] is (blocked is False)
             assert final_payload["current_phase"] == "code"
             assert final_payload["phase_statuses"]["prd"] == "approved"
             assert final_payload["phase_statuses"]["architecture"] == "approved"
