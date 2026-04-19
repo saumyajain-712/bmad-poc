@@ -16,10 +16,32 @@ export function getNonToolDetailRows(event: RunTimelineEvent): DetailRow[] {
     rows.push({ label: 'Error summary', value: event.error_summary, emphasis: 'error' });
   }
 
-  if (event.event_type === 'phase-status-changed') {
+  if (event.event_type === 'proposal_generation_failed') {
+    if (event.step) rows.push({ label: 'Step', value: event.step });
+    if (event.diagnostics && Object.keys(event.diagnostics).length > 0) {
+      rows.push({ label: 'Diagnostics', value: formatRedactedJsonPretty(event.diagnostics) });
+    }
+  } else if (event.event_type === 'resume-failed') {
+    if (event.decision_type) rows.push({ label: 'Decision type', value: event.decision_type });
+    if (event.source_checkpoint) {
+      rows.push({ label: 'Source checkpoint', value: event.source_checkpoint });
+    }
+    if (event.current_phase_index !== undefined && event.current_phase_index !== null) {
+      rows.push({ label: 'Phase index', value: String(event.current_phase_index) });
+    }
+    if (event.reason) {
+      rows.push({ label: 'Reason', value: event.reason, emphasis: 'error' });
+    }
+  } else if (event.event_type === 'phase-status-changed') {
     if (event.old_status !== undefined) rows.push({ label: 'Old status', value: String(event.old_status) });
     if (event.new_status !== undefined) rows.push({ label: 'New status', value: String(event.new_status) });
-    if (event.reason) rows.push({ label: 'Reason', value: event.reason });
+    if (event.reason) {
+      rows.push({
+        label: 'Reason',
+        value: event.reason,
+        ...(event.new_status === 'failed' ? { emphasis: 'error' as const } : {}),
+      });
+    }
   } else if (event.previous_phase !== undefined || event.next_phase !== undefined) {
     if (event.previous_phase !== undefined) {
       rows.push({ label: 'Previous phase', value: String(event.previous_phase) });

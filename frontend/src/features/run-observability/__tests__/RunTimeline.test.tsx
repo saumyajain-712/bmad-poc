@@ -487,4 +487,132 @@ describe('RunTimeline', () => {
     expect(rows[1]).toHaveAttribute('data-timeline-variant', 'tool');
     expect(rows[1]).toHaveTextContent('tool-call-completed');
   });
+
+  it('classifies proposal_generation_failed as failure variant with phase, step, and error hint in summary (FR18)', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: 'proposal_generation_failed',
+            phase: 'stories',
+            step: 'generate-phase-proposal',
+            error_summary: 'LLM timeout',
+            timestamp: '2026-04-17T16:00:20Z',
+          },
+        ]}
+      />
+    );
+
+    const row = screen.getByRole('listitem');
+    expect(row).toHaveAttribute('data-timeline-variant', 'failure');
+    expect(row).toHaveTextContent('Stories');
+    expect(row).toHaveTextContent('generate phase proposal');
+    expect(row).toHaveTextContent('LLM timeout');
+  });
+
+  it('classifies modify-regenerate proposal_generation_failed and shows diagnostics in detail panel', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: 'proposal_generation_failed',
+            phase: 'prd',
+            step: 'modify-regenerate-proposal',
+            error_summary: 'build failed',
+            diagnostics: { source_revision: 2, feedback_summary: 'more detail' },
+            timestamp: '2026-04-17T16:00:21Z',
+          },
+        ]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Details for/ }));
+    expect(screen.getByText('Step')).toBeInTheDocument();
+    expect(screen.getByText('modify-regenerate-proposal')).toBeInTheDocument();
+    expect(screen.getByText('Diagnostics')).toBeInTheDocument();
+    expect(screen.getByTestId('full-event-json').textContent).toContain('source_revision');
+  });
+
+  it('classifies resume-failed with structured resume fields in details (FR18)', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: 'resume-failed',
+            phase: 'architecture',
+            decision_type: 'approve',
+            source_checkpoint: 'awaiting-approval',
+            reason: 'resume_conflict',
+            current_phase_index: 1,
+            timestamp: '2026-04-17T16:00:22Z',
+          },
+        ]}
+      />
+    );
+
+    const row = screen.getByRole('listitem');
+    expect(row).toHaveAttribute('data-timeline-variant', 'failure');
+    expect(row).toHaveTextContent('Architecture');
+    expect(row).toHaveTextContent('resume failed');
+    expect(row).toHaveTextContent('resume_conflict');
+
+    fireEvent.click(screen.getByRole('button', { name: /Details for failed/ }));
+    expect(screen.getByText('Decision type')).toBeInTheDocument();
+    expect(screen.getByText('approve')).toBeInTheDocument();
+    expect(screen.getByText('Source checkpoint')).toBeInTheDocument();
+    expect(screen.getByText('awaiting-approval')).toBeInTheDocument();
+    expect(screen.getByText('Phase index')).toBeInTheDocument();
+  });
+
+  it('classifies phase-status-changed to failed as failure variant', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: 'phase-status-changed',
+            phase: 'code',
+            old_status: 'in-progress',
+            new_status: 'failed',
+            reason: 'proposal-generation-failed',
+            timestamp: '2026-04-17T16:00:23Z',
+          },
+        ]}
+      />
+    );
+
+    const row = screen.getByRole('listitem');
+    expect(row).toHaveAttribute('data-timeline-variant', 'failure');
+    expect(row).toHaveTextContent('Code');
+    expect(row).toHaveTextContent('status → failed');
+
+    fireEvent.click(screen.getByRole('button', { name: /Details for failed/ }));
+    expect(screen.getByText('proposal-generation-failed')).toBeInTheDocument();
+  });
+
+  it('classifies tool-call-completed with error_summary as failure variant and keeps tool identity in summary', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: TOOL_CALL_COMPLETED_EVENT_TYPE,
+            phase: 'prd',
+            timestamp: '2026-04-17T16:00:24Z',
+            tool_name: 'read_file',
+            tool_input: {},
+            tool_output: {},
+            error_summary: 'path not found',
+          },
+        ]}
+      />
+    );
+
+    const row = screen.getByRole('listitem');
+    expect(row).toHaveAttribute('data-timeline-variant', 'failure');
+    expect(row).toHaveTextContent('tool read_file');
+    expect(row).toHaveTextContent('path not found');
+
+    fireEvent.click(screen.getByRole('button', { name: /Details for failed/ }));
+    expect(screen.getByText('Outcome / error')).toBeInTheDocument();
+    expect(screen.getByText('path not found')).toBeInTheDocument();
+  });
 });

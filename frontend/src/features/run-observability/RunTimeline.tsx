@@ -14,6 +14,16 @@ interface RunTimelineProps {
 }
 
 function liStyleForVariant(variant: TimelineRowVariant, isTool: boolean): React.CSSProperties {
+  if (variant === 'failure') {
+    return {
+      marginBottom: 6,
+      padding: '6px 8px',
+      borderLeft: '4px solid #a94442',
+      background: '#fdf2f2',
+      fontFamily: isTool ? 'Consolas, ui-monospace, monospace' : undefined,
+      fontSize: 13,
+    };
+  }
   if (variant === 'tool' || isTool) {
     return {
       marginBottom: 6,
@@ -100,7 +110,7 @@ const RunTimeline: React.FC<RunTimelineProps> = ({ events }) => {
         {events.map((event, index) => {
           const key = eventKey(event, index);
           const isTool = event.event_type === TOOL_CALL_COMPLETED_EVENT_TYPE;
-          const variant = isTool ? 'tool' : classifyTimelineRowVariant(event);
+          const variant = classifyTimelineRowVariant(event);
           const rowScope = rowScopes[index] ?? null;
           const phaseScopeBoundary =
             index > 0 && rowScope !== rowScopes[index - 1];
@@ -138,7 +148,7 @@ const RunTimeline: React.FC<RunTimelineProps> = ({ events }) => {
                   id={toggleId}
                   aria-expanded={expanded}
                   aria-controls={panelId}
-                  aria-label={`${expanded ? 'Hide details' : 'Details'} for ${event.event_type} at ${formatTimestamp(event.timestamp)}`}
+                  aria-label={`${expanded ? 'Hide details' : 'Details'} for ${variant === 'failure' ? 'failed ' : ''}${event.event_type} at ${formatTimestamp(event.timestamp)}`}
                   onClick={() => setExpandedEventKey(expanded ? null : key)}
                   style={{
                     flex: '0 0 auto',
@@ -159,7 +169,11 @@ const RunTimeline: React.FC<RunTimelineProps> = ({ events }) => {
                   {getPhaseDisplayName(event.phase) === '—' ? 'unscoped' : getPhaseDisplayName(event.phase)}
                   {' | '}
                   {isTool ? (
-                    <span style={{ color: '#31708f' }}>
+                    <span style={{ color: variant === 'failure' ? '#a94442' : '#31708f' }}>
+                      <strong>{event.event_type}</strong>
+                    </span>
+                  ) : variant === 'failure' ? (
+                    <span style={{ color: '#a94442' }}>
                       <strong>{event.event_type}</strong>
                     </span>
                   ) : variant === 'phase-transition' ? (

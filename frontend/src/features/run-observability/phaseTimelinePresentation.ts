@@ -15,11 +15,48 @@ export function getPhaseDisplayName(phaseId: string | null | undefined): string 
 }
 
 export type TimelineRowVariant =
+  | 'failure'
   | 'tool'
   | 'phase-transition'
   | 'phase-governance'
   | 'phase-status'
   | 'default';
+
+const MAX_FAILURE_ONE_LINE = 120;
+
+function truncateOneLine(text: string, max: number): string {
+  const t = text.replace(/\s+/g, ' ').trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, Math.max(0, max - 1))}…`;
+}
+
+const STEP_DISPLAY: Record<string, string> = {
+  'generate-phase-proposal': 'generate phase proposal',
+  'modify-regenerate-proposal': 'modify / regenerate proposal',
+};
+
+function humanizeStep(step: string | undefined): string {
+  if (step == null || step === '') return '—';
+  return STEP_DISPLAY[step] ?? step.replace(/-/g, ' ');
+}
+
+/**
+ * Failure/diagnostic rows (FR18): distinct from normal tool / phase-transition / governance rows.
+ * Tool rows with `error_summary` use variant **failure** (not `tool`) for consistent error styling.
+ */
+export function isFailureTimelineEvent(event: RunTimelineEvent): boolean {
+  if (event.event_type === 'proposal_generation_failed') return true;
+  if (event.event_type === 'resume-failed') return true;
+  if (event.event_type === 'phase-status-changed' && event.new_status === 'failed') return true;
+  if (
+    event.event_type === TOOL_CALL_COMPLETED_EVENT_TYPE
+    && typeof event.error_summary === 'string'
+    && event.error_summary.trim() !== ''
+  ) {
+    return true;
+  }
+  return false;
+}
 
 const PHASE_GOVERNANCE_TYPES = new Set([
   'phase-approved',
@@ -31,9 +68,12 @@ const PHASE_GOVERNANCE_TYPES = new Set([
 
 /**
  * Maps API event_type (+ optional reason) to a row presentation variant.
- * Tool rows stay isolated from phase styling (Story 3.2).
+ * Tool rows stay isolated from phase styling (Story 3.2); failures are distinct (Story 3.6).
  */
 export function classifyTimelineRowVariant(event: RunTimelineEvent): TimelineRowVariant {
+  if (isFailureTimelineEvent(event)) {
+    return 'failure';
+  }
   if (event.event_type === TOOL_CALL_COMPLETED_EVENT_TYPE) {
     return 'tool';
   }
@@ -47,6 +87,38 @@ export function classifyTimelineRowVariant(event: RunTimelineEvent): TimelineRow
     return 'phase-governance';
   }
   return 'default';
+}
+
+/** One-line summary for collapsed failure rows: phase label + step (when present) + short diagnostic (FR18). */
+export function formatFailureEventSummary(event: RunTimelineEvent): string {
+  const phaseLabel = getPhaseDisplayName(event.phase);
+
+  if (event.event_type === 'proposal_generation_failed') {
+    const stepText = humanizeStep(event.step);
+    const hint = truncateOneLine(
+      event.error_summary || event.reason || 'proposal generation failed',
+      MAX_FAILURE_ONE_LINE,
+    );
+    return `${phaseLabel} · ${stepText} · ${hint}`;
+  }
+
+  if (event.event_type === 'resume-failed') {
+    const hint = truncateOneLine(event.reason || 'resume failed', MAX_FAILURE_ONE_LINE);
+    return `${phaseLabel} · resume failed · ${hint}`;
+  }
+
+  if (event.event_type === 'phase-status-changed' && event.new_status === 'failed') {
+    const hint = truncateOneLine(event.reason || 'phase status failed', MAX_FAILURE_ONE_LINE);
+    return `${phaseLabel} · status → failed · ${hint}`;
+  }
+
+  if (event.event_type === TOOL_CALL_COMPLETED_EVENT_TYPE && event.error_summary) {
+    const name = event.tool_name || 'tool';
+    const hint = truncateOneLine(event.error_summary, MAX_FAILURE_ONE_LINE);
+    return `${phaseLabel} · tool ${name} · ${hint}`;
+  }
+
+  return truncateOneLine(event.error_summary || event.reason || 'failure', MAX_FAILURE_ONE_LINE);
 }
 
 /**
@@ -77,6 +149,10 @@ export function formatPhaseTransitionSummary(event: RunTimelineEvent): string {
 }
 
 export function formatEventDetailForTimeline(event: RunTimelineEvent): string {
+  if (isFailureTimelineEvent(event)) {
+    return formatFailureEventSummary(event);
+  }
+
   if (event.event_type === TOOL_CALL_COMPLETED_EVENT_TYPE) {
     const name = event.tool_name || 'unknown_tool';
     if (name === 'web_search') {

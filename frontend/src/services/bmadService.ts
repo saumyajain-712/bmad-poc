@@ -16,11 +16,19 @@ export interface RunTimelineEvent {
     reason?: string;
     step?: string;
     error_summary?: string;
+    /** Present on some `proposal_generation_failed` events (modify/regenerate path) */
+    diagnostics?: Record<string, unknown>;
     artifact?: Record<string, unknown>;
     /** Simulated agent tool call (Story 3.2); snake_case matches API JSON */
     tool_name?: string;
     tool_input?: Record<string, unknown> | string;
     tool_output?: Record<string, unknown> | string;
+    /** `resume-failed` / `resume-completed` (orchestration resume) */
+    decision_type?: string;
+    source_checkpoint?: string;
+    decision_token?: string | null;
+    current_phase_index?: number | null;
+    no_op?: boolean;
 }
 
 export interface Run {
