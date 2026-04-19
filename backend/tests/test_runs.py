@@ -722,6 +722,63 @@ def test_code_phase_verification_detects_api_ui_mismatch(monkeypatch):
         app.dependency_overrides.clear()
 
 
+def test_code_phase_modify_regenerates_preserves_api_ui_mismatch_verification(monkeypatch):
+    """Regression: feedback appended in modify must not break marker/json parsing (Story 4.2)."""
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={
+                    "api_specification": "Create users API with CRUD and required fields name and email",
+                },
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            for phase in ("prd", "architecture", "stories"):
+                await client.post(f"/api/v1/runs/{run_id}/phases/{phase}/start")
+                await client.post(f"/api/v1/runs/{run_id}/phases/{phase}/approve")
+
+            await client.post(f"/api/v1/runs/{run_id}/phases/code/start")
+            run_payload = (await client.get(f"/api/v1/runs/{run_id}")).json()
+            assert run_payload["proposal_artifacts"]["code"]["verification"]["overall"] == "failed"
+
+            modify_response = await client.post(
+                f"/api/v1/runs/{run_id}/phases/code/modify",
+                json={
+                    "feedback": "Please align UI payload with API required fields.",
+                    "actor": "session:test",
+                    "proposal_revision": 1,
+                },
+            )
+            assert modify_response.status_code == 200
+            body = modify_response.json()
+            assert body.get("status") == "modified-and-regenerated"
+            assert body.get("proposal_revision") == 2
+
+            run_payload = (await client.get(f"/api/v1/runs/{run_id}")).json()
+            ver = run_payload["proposal_artifacts"]["code"]["verification"]
+            assert ver["overall"] == "failed"
+            assert ver.get("revision") == 2
+            code_check = next(
+                c
+                for c in ver["checks"]
+                if isinstance(c, dict) and c.get("id") == "code-todo-api-ui"
+            )
+            assert code_check["passed"] is False
+            assert "completed" in (code_check.get("message") or "").lower()
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_run_phase_verification_code_mismatch_is_deterministic():
     phase_out = orchestration.build_code_phase_proposal_content(
         "Create users API with CRUD and required fields name and email",

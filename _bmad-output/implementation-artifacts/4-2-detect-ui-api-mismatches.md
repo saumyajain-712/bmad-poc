@@ -1,6 +1,6 @@
 # Story 4.2: Detect UI/API Mismatches
 
-Status: review
+Status: done
 
 <!-- Ultimate context engine analysis completed - comprehensive developer guide created -->
 
@@ -35,7 +35,8 @@ so that I can ensure data consistency across the full stack (**FR20**).
 
 ### Review Findings
 
-- [ ] [Review][Defer] —
+- [x] [Review][Patch] Add automated regression for code-phase `modify_phase_proposal` (feedback appended to `content`) so `code-todo-api-ui` and marker parsing stay covered if merge/regenerate behavior changes [`backend/tests/test_runs.py`] — addressed via `test_code_phase_modify_regenerates_preserves_api_ui_mismatch_verification`
+- [x] [Review][Defer] Tracked `__pycache__` / `.pyc` files under `backend/` (and related bytecode noise) — deferred, pre-existing repository hygiene (same class as Epic 3 code reviews; not introduced by Story 4.2 logic)
 
 ## Dev Notes
 

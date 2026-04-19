@@ -44,3 +44,7 @@
 ## Deferred from: code review of 4-1-run-verification-checks.md (2026-04-19)
 
 - Baseline verification checks accept `resolved_context_snapshot` but do not consult it yet (`backend/services/verification.py`); intentional hook for Story 4.2+ registered checks — not a functional gap for Story 4.1 ACs.
+
+## Deferred from: code review of 4-2-detect-ui-api-mismatches.md (2026-04-19)
+
+- Tracked bytecode caches / `__pycache__` under `backend/` — same pre-existing hygiene bucket as Epic 3 deferrals; cleanup is repo-wide maintenance, not blocking Story 4.2 acceptance.
