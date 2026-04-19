@@ -466,6 +466,7 @@ def test_phase_proposal_persists_tool_call_events_before_proposal_generated(monk
             pg_idx = types.index("proposal_generated")
             tool_events = [e for e in events if isinstance(e, dict) and e.get("event_type") == "tool-call-completed"]
             assert len(tool_events) == 3
+            assert [e.get("tool_name") for e in tool_events] == ["search_files", "read_file", "web_search"]
             tool_idxs = [i for i, e in enumerate(events) if isinstance(e, dict) and e.get("event_type") == "tool-call-completed"]
             assert all(i < pg_idx for i in tool_idxs)
             for e in tool_events:

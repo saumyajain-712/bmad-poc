@@ -32,3 +32,7 @@
 ## Deferred from: code review of 3-3-inspect-event-level-details.md (2026-04-18)
 
 - Very large tool payload/event debug dumps may degrade rendering performance in the detail panel (`frontend/src/features/run-observability/EventDetailPanel.tsx`) — deferred as pre-existing/performance hardening follow-up.
+
+## Deferred from: code review of 3-4-display-mock-web-search-results.md (2026-04-19)
+
+- Repository-wide tracking of `__pycache__`, test `.pyc` caches, and related bytecode under `backend/` (and `venv`) remains a pre-existing hygiene issue; Story 3.4 adds another regenerated `.pyc` touch in the same class as prior Epic 3 reviews — cleanup is a broader repo maintenance task, not blocking functional AC for this story.

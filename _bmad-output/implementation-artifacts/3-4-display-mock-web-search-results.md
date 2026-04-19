@@ -1,6 +1,6 @@
 # Story 3.4: Display Mock Web-Search Results
 
-Status: review
+Status: done
 
 <!-- Ultimate context engine analysis completed - comprehensive developer guide created -->
 
@@ -113,6 +113,13 @@ so that developers can understand the agent's information-gathering process.
 - `frontend/src/features/run-observability/__tests__/RunTimeline.test.tsx`
 - `frontend/src/features/run-observability/toolEventPresentation.ts`
 
+### Review Findings
+
+- [x] [Review][Patch] Untrack or stop committing Vite/Vitest cache `results.json` under `frontend/node_modules/.vite/` — noisy, timing-churn artifact; remove from git index if previously force-added [frontend/node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/results.json]
+- [x] [Review][Patch] Drop regenerated `__pycache__` / `.pyc` files from this change set (e.g. `backend/services/__pycache__/orchestration.cpython-311.pyc`, `backend/tests/__pycache__/test_runs.cpython-311-pytest-9.0.2.pyc`) — prefer `git restore` / `git rm --cached` for bytecode not meant for review [backend/services/__pycache__/]
+- [x] [Review][Patch] Assert canonical simulated tool-call order `search_files` → `read_file` → `web_search` in `test_phase_proposal_persists_tool_call_events_before_proposal_generated` to lock the story contract (not just count and “before proposal”) [backend/tests/test_runs.py]
+- [x] [Review][Defer] Repository still tracks broad `__pycache__` / `venv` bytecode paths beyond this story — same hygiene class as Story 3.2/3.1 reviews — deferred, pre-existing
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -146,3 +153,4 @@ Composer (Cursor agent)
 ### Change Log
 
 - 2026-04-18: Implemented Story 3.4 mock web-search timeline visibility across backend event generation, timeline summaries, and tests; moved story to review.
+- 2026-04-19: Code review — tool-call order assertion; stopped tracking Vitest cache `results.json` and regenerated `.pyc` for touched modules; story marked done.
