@@ -67,3 +67,9 @@
 
 - Timeline event merge equality can retain stale event metadata not compared by dedupe logic (`frontend/src/features/run-initiation/RunInitiationForm.tsx`) — deferred as pre-existing timeline consistency hardening.
 - Clarification pending-question normalization can collapse distinct prompts with the same normalized key (`backend/api/v1/endpoints/runs.py`) — deferred as pre-existing robustness gap not introduced by this commit range.
+
+## Deferred from: code review of 6-3-return-to-input-ready-state.md (2026-04-20)
+
+- AC2 (full browser refresh / new tab) is documented via completion notes and code comments but has no dedicated automated E2E in this repo; follow-up if product requires machine-verified cold-load behavior.
+- Explicit assertion that `runId` is cleared after reset is optional given current RTL patterns (no DOM exposure); consider only if regressions appear.
+- The new FR31 test block omits a reset-failure path; failure UX is still covered by existing reset tests in the same file — not introduced as a new gap by this change set.

@@ -1,6 +1,6 @@
 # Story 6.3: Return to Input-Ready State
 
-Status: review
+Status: done
 
 <!-- Ultimate context engine analysis completed - comprehensive developer guide created -->
 
@@ -30,6 +30,16 @@ so that developers can immediately start a new BMAD run (**FR31**).
 - [x] **Tests** (AC: 1, 4)
   - [x] Extend `RunInitiationForm.test.tsx`: after a successful reset (mock `resetRunEnvironment`), assert textarea is empty, success copy present as today, and **no** “Run complete” / phase snapshot / timeline content from a **prior** mocked run (e.g. pre-fill state then reset).
   - [x] Optional: snapshot or query absence of timeline section when `latestRun` cleared.
+
+### Review Findings
+
+- [x] [Review][Patch] Restore monotonic sprint tracking timestamps — fixed: `# last_updated` / `last_updated` set to `2026-04-20T23:59:00+05:30` (forward-only after code review). [_bmad-output/implementation-artifacts/sprint-status.yaml:2,37-38]
+
+- [x] [Review][Defer] AC2 (reload / new tab) has no automated browser E2E in this change set; completion notes and the inline comment address the POC scope. Full E2E remains a follow-up outside this story’s unit-test focus. — deferred, pre-existing scope gap
+
+- [x] [Review][Defer] AC1 calls for “no active `runId`”; the new RTL test asserts user-visible “input-ready” surfaces but does not directly assert internal `runId` state (not exposed in DOM). Acceptable for current patterns; optional hardening later. — deferred, pre-existing pattern
+
+- [x] [Review][Defer] The new FR31 `describe` block does not add a reset-failure scenario; failure handling is covered elsewhere in the same file’s reset tests and is not a regression from this diff. — deferred, pre-existing
 
 ## Dev Notes
 
@@ -112,6 +122,7 @@ Composer (Cursor agent)
 ### Change Log
 
 - 2026-04-20: Story 6.3 — FR31 input-ready UX audit, comment + reset handler tidy, extended RTL tests; sprint status → review.
+- 2026-04-20: Code review — monotonic `last_updated` in `sprint-status.yaml`; story and sprint status → done.
 
 ## Latest technical notes (POC)
 
@@ -119,5 +130,5 @@ Composer (Cursor agent)
 
 ## Story completion status
 
-- **Status:** review  
-- **Note:** Ultimate context engine analysis completed — comprehensive developer guide created.
+- **Status:** done  
+- **Note:** Ultimate context engine analysis completed — comprehensive developer guide created. Code review completed; patch findings addressed.
