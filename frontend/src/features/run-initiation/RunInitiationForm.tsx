@@ -292,7 +292,7 @@ const RunInitiationForm: React.FC = () => {
   };
 
   const handleResetEnvironment = async () => {
-    if (isResettingEnvironment || isSubmitting) {
+    if (isResettingEnvironment || isSubmitting || isApplyingCorrection) {
       return;
     }
     if (
@@ -341,15 +341,15 @@ const RunInitiationForm: React.FC = () => {
         <button
           type="button"
           onClick={handleResetEnvironment}
-          disabled={isResettingEnvironment || isSubmitting}
+          disabled={isResettingEnvironment || isSubmitting || isApplyingCorrection}
           style={{
             padding: '8px 12px',
             backgroundColor: '#c9302c',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
-            cursor: isResettingEnvironment || isSubmitting ? 'not-allowed' : 'pointer',
-            opacity: isResettingEnvironment || isSubmitting ? 0.7 : 1,
+            cursor: isResettingEnvironment || isSubmitting || isApplyingCorrection ? 'not-allowed' : 'pointer',
+            opacity: isResettingEnvironment || isSubmitting || isApplyingCorrection ? 0.7 : 1,
           }}
         >
           {isResettingEnvironment ? 'Resetting…' : 'Reset environment'}

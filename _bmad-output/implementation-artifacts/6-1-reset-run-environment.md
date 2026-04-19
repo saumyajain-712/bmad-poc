@@ -1,6 +1,6 @@
 # Story 6.1: Reset Run Environment
 
-Status: review
+Status: done
 
 <!-- Ultimate context engine analysis completed - comprehensive developer guide created -->
 
@@ -106,6 +106,7 @@ Composer (Cursor agent)
 - Implemented `delete_all_runs` in CRUD with bulk delete + commit; `POST /api/v1/runs/environment/reset` returns `RunEnvironmentResetResponse` (`status`, `runs_deleted`). Route registered before dynamic `/runs/{run_id}` paths.
 - Frontend: **Run administration** section with **Reset environment** (always visible), `window.confirm` before API, `resetRunEnvironment()` in `bmadService`. On success: clear `apiSpec`, `runId`, `latestRun`, clarification state, errors, then show a short success message (fresh demo default: cleared spec).
 - Tests: `test_reset_run_environment` (initial reset clears shared test DB noise, then two runs + reset + 404s + idempotent zero delete); RTL test for confirm + service + panel cleared.
+- Code review (2026-04-20): reset handler and button now respect `isApplyingCorrection` to avoid racing reset against in-flight correction apply.
 
 ### File List
 
@@ -121,3 +122,10 @@ Composer (Cursor agent)
 ### Change Log
 
 - 2026-04-20: Story 6.1 — environment reset API, UI control, backend + frontend tests.
+- 2026-04-20: Code review — gate reset on `isApplyingCorrection` (race with apply-phase-correction).
+
+## Code review
+
+### Review Findings
+
+- [x] [Review][Patch] Coordinate reset with in-flight phase correction — `handleResetEnvironment` does not treat `isApplyingCorrection` like other destructive/async paths: the guard only checks `isResettingEnvironment` and `isSubmitting`, and the reset button stays enabled while a correction apply is in progress. A user can confirm reset during an in-flight `applyPhaseCorrection`, racing server-side correction work against a full environment wipe. **Fix:** add `isApplyingCorrection` to the early-return guard and to the reset control’s `disabled` / `cursor` / `opacity` styling (mirror patterns used for the primary run controls). [RunInitiationForm.tsx:294-357] — fixed 2026-04-20.
