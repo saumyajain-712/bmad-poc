@@ -806,7 +806,7 @@ def apply_run_phase_correction(
         "invalid_ui_provided_fields",
     }:
         raise HTTPException(status_code=409, detail={"error_code": outcome})
-    if outcome != "correction-applied" or not isinstance(corrected_proposal, dict):
+    if outcome not in {"correction-applied", "correction-already-applied"} or not isinstance(corrected_proposal, dict):
         raise HTTPException(status_code=500, detail={"error_code": "unexpected_correction_outcome"})
 
     verification_artifact = corrected_proposal.get("verification")
@@ -827,7 +827,7 @@ def apply_run_phase_correction(
     return {
         "run_id": updated_run.id,
         "phase": normalized_phase,
-        "status": "correction-applied",
+        "status": outcome,
         "proposal_revision": proposal_revision,
         "verification_overall": verification_overall,
         "source_check_id": source_check_id,

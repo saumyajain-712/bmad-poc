@@ -1090,6 +1090,18 @@ def apply_phase_correction(
     if current_revision != expected_revision:
         return locked_run, None, "stale_proposal_revision"
 
+    existing_correction = proposal.get("correction_applied")
+    if isinstance(existing_correction, dict):
+        existing_revision = existing_correction.get("revision")
+        existing_source = existing_correction.get("source_check_id")
+        existing_verification = proposal.get("verification")
+        if (
+            existing_revision == current_revision
+            and isinstance(existing_source, str)
+            and isinstance(existing_verification, dict)
+        ):
+            return locked_run, proposal, "correction-already-applied"
+
     correction_proposal = proposal.get("correction_proposal")
     if not isinstance(correction_proposal, dict):
         return locked_run, None, "correction_proposal_missing"
@@ -1113,8 +1125,11 @@ def apply_phase_correction(
         proposal_payload=corrected_payload,
         resolved_context_snapshot=resolved_ctx,
     )
+    deterministic_timestamp = (
+        f"correction|{proposal.get('generated_at')}|rev-{current_revision}"
+    )
     corrected_payload["correction_applied"] = {
-        "applied_at": timestamp,
+        "applied_at": deterministic_timestamp,
         "applied_by": actor,
         "source_check_id": correction_proposal.get("source_check_id"),
         "revision": current_revision,
@@ -1136,7 +1151,7 @@ def apply_phase_correction(
             "revision": current_revision,
             "source_check_id": correction_proposal.get("source_check_id"),
             "summary": ver_summary,
-            "timestamp": timestamp,
+            "timestamp": deterministic_timestamp,
         }
     )
     events.append(

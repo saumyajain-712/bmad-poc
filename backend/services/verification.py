@@ -224,6 +224,25 @@ def _extract_json_fence_after_marker(content: str, marker: str) -> dict[str, Any
     return parsed if isinstance(parsed, dict) else None
 
 
+def _replace_json_fence_after_marker(content: str, marker: str, payload: dict[str, Any]) -> str:
+    marker_idx = content.find(marker)
+    if marker_idx < 0:
+        raise ValueError("missing_ui_marker_block")
+    fence_start = content.find("```json", marker_idx + len(marker))
+    if fence_start < 0:
+        raise ValueError("missing_ui_marker_block")
+    fence_end = content.find("```", fence_start + len("```json"))
+    if fence_end < 0:
+        raise ValueError("missing_ui_marker_block")
+    fence_end += len("```")
+    replacement = (
+        "```json\n"
+        f"{json.dumps(payload, indent=2, sort_keys=True)}\n"
+        "```"
+    )
+    return f"{content[:fence_start]}{replacement}{content[fence_end:]}"
+
+
 def _check_code_todo_api_ui_alignment(
     phase: str,
     proposal: dict[str, Any],
@@ -399,17 +418,11 @@ def apply_correction_proposal(
     already_has_completed = "completed" in provided_fields
     if not already_has_completed:
         ui_todo_create["provided"] = [*provided_fields, "completed"]
-        ui_marker = orchestration.CODE_PHASE_UI_TODO_MARKER
-        marker_idx = content.find(ui_marker)
-        if marker_idx < 0:
-            raise ValueError("missing_ui_marker_block")
-        before_ui = content[:marker_idx]
-        replacement = (
-            f"{ui_marker}\n```json\n"
-            f"{json.dumps(ui_data, indent=2, sort_keys=True)}\n"
-            "```"
+        content = _replace_json_fence_after_marker(
+            content,
+            orchestration.CODE_PHASE_UI_TODO_MARKER,
+            ui_data,
         )
-        content = f"{before_ui}{replacement}"
 
     updated_payload = dict(proposal_payload)
     updated_payload["content"] = content

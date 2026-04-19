@@ -1,6 +1,6 @@
 # Story 4.4: Apply Approved Corrections
 
-Status: review
+Status: done
 
 <!-- Ultimate context engine analysis completed - comprehensive developer guide created -->
 
@@ -44,6 +44,14 @@ so that detected issues are resolved and the workflow can proceed (**FR22**).
   - [x] Add rejection-path tests: stale revision, missing correction proposal, wrong phase state, and duplicate apply attempt behavior.
   - [x] Add timeline assertions that `correction_applied` and refreshed verification events are emitted with expected metadata and deterministic order.
   - [x] Add frontend tests (targeted) to verify apply control visibility/disabled states and post-apply observability rendering.
+
+### Review Findings
+
+- [x] [Review][Patch] Correction apply can truncate proposal tail content when UI marker block is replaced [backend/services/verification.py:364]
+- [x] [Review][Patch] Correction apply retry path is not idempotent after uncertain client/network failure [backend/sql_app/crud.py:1040]
+- [x] [Review][Patch] Correction metadata timestamps are wall-clock based and break deterministic behavior expectations [backend/api/v1/endpoints/runs.py:762]
+- [x] [Review][Patch] Apply-correction UI can report failure after successful apply if follow-up refresh fails [frontend/src/features/run-initiation/RunInitiationForm.tsx:257]
+- [x] [Review][Patch] Promised apply-flow test coverage is incomplete for duplicate/wrong-state and frontend apply controls [backend/tests/test_runs.py:1]
 
 ## Dev Notes
 

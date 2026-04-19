@@ -948,6 +948,7 @@ def test_code_phase_apply_correction_reverifies_and_persists_metadata(monkeypatc
             assert code["verification"]["overall"] == "passed"
             assert "correction_proposal" not in code
             assert code["correction_applied"]["source_check_id"] == "code-todo-api-ui"
+            assert code["correction_applied"]["applied_at"].startswith("correction|run-")
             events = after["context_events"]
             assert any(e.get("event_type") == "correction_applied" for e in events)
             assert any(
@@ -997,6 +998,81 @@ def test_apply_correction_rejects_stale_revision_and_missing_correction(monkeypa
             )
             assert stale.status_code == 409
             assert stale.json()["detail"]["error_code"] == "stale_proposal_revision"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_apply_correction_returns_idempotent_status_on_duplicate_retry(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            run_id = create_response.json()["run"]["id"]
+            for phase in ("prd", "architecture", "stories"):
+                await client.post(f"/api/v1/runs/{run_id}/phases/{phase}/start")
+                await client.post(f"/api/v1/runs/{run_id}/phases/{phase}/approve")
+            await client.post(f"/api/v1/runs/{run_id}/phases/code/start")
+
+            first_apply = await client.post(
+                f"/api/v1/runs/{run_id}/phases/code/corrections/apply",
+                json={"proposal_revision": 1, "actor": "session:test"},
+            )
+            assert first_apply.status_code == 200
+            assert first_apply.json()["status"] == "correction-applied"
+
+            duplicate_apply = await client.post(
+                f"/api/v1/runs/{run_id}/phases/code/corrections/apply",
+                json={"proposal_revision": 1, "actor": "session:test"},
+            )
+            assert duplicate_apply.status_code == 200
+            assert duplicate_apply.json()["status"] == "correction-already-applied"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_apply_correction_rejects_when_phase_not_awaiting_approval(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            run_id = create_response.json()["run"]["id"]
+            await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+
+            rejected = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/corrections/apply",
+                json={"proposal_revision": 1},
+            )
+            assert rejected.status_code == 409
+            assert rejected.json()["detail"]["error_code"] == "correction_proposal_missing"
+
+            await client.post(f"/api/v1/runs/{run_id}/phases/prd/approve")
+
+            wrong_state = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/corrections/apply",
+                json={"proposal_revision": 1},
+            )
+            assert wrong_state.status_code == 409
+            assert wrong_state.json()["detail"]["error_code"] == "phase_skip_not_allowed"
 
     try:
         anyio.run(exercise)

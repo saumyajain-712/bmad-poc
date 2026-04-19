@@ -254,10 +254,18 @@ const RunInitiationForm: React.FC = () => {
     try {
       setIsApplyingCorrection(true);
       setError('');
-      await applyPhaseCorrection(runId, phase, { proposal_revision: revision });
-      const refreshedRun = await fetchRun(runId);
-      setLatestRun((previous) => mergeRunSnapshot(previous, refreshedRun));
-      setMessage(`Correction applied for ${phase} revision ${revision} and verification re-ran.`);
+      const applyResult = await applyPhaseCorrection(runId, phase, { proposal_revision: revision });
+      try {
+        const refreshedRun = await fetchRun(runId);
+        setLatestRun((previous) => mergeRunSnapshot(previous, refreshedRun));
+      } catch (refreshErr) {
+        console.error(refreshErr);
+        setMessage(
+          `Correction ${applyResult.status} for ${phase} revision ${revision}, but run refresh failed. Please reload run details.`
+        );
+        return;
+      }
+      setMessage(`Correction ${applyResult.status} for ${phase} revision ${revision}; verification refreshed.`);
     } catch (err) {
       setError('Failed to apply correction. Please try again.');
       console.error(err);
