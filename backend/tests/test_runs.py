@@ -912,6 +912,28 @@ def test_code_phase_modify_regeneration_updates_single_correction_event_per_revi
         app.dependency_overrides.clear()
 
 
+def test_correction_proposal_detects_targeted_mismatch_even_if_not_first_failed_check():
+    proposal_payload = {"revision": 3}
+    verification_artifact = {
+        "overall": "failed",
+        "checks": [
+            {"id": "proposal-structure-required-keys", "passed": False},
+            {"id": "code-todo-api-ui", "passed": False},
+        ],
+    }
+
+    correction = verification.build_correction_proposal(
+        phase="code",
+        proposal_payload=proposal_payload,
+        verification_artifact=verification_artifact,
+    )
+
+    assert isinstance(correction, dict)
+    assert correction["mismatch_id"] == "code-todo-api-ui"
+    assert correction["source_check_id"] == "code-todo-api-ui"
+    assert correction["revision"] == 3
+
+
 def test_run_phase_verification_code_mismatch_is_deterministic():
     phase_out = orchestration.build_code_phase_proposal_content(
         "Create users API with CRUD and required fields name and email",

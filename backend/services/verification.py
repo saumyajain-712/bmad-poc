@@ -315,14 +315,16 @@ def verification_event_summary(verification: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _first_failed_check(verification_artifact: dict[str, Any]) -> dict[str, Any] | None:
+def _has_failed_check(verification_artifact: dict[str, Any], check_id: str) -> bool:
     checks = verification_artifact.get("checks")
     if not isinstance(checks, list):
-        return None
+        return False
     for check in checks:
-        if isinstance(check, dict) and not check.get("passed"):
-            return check
-    return None
+        if not isinstance(check, dict):
+            continue
+        if check.get("id") == check_id and check.get("passed") is False:
+            return True
+    return False
 
 
 def build_correction_proposal(
@@ -345,11 +347,7 @@ def build_correction_proposal(
     if verification_artifact.get("overall") != "failed":
         return None
 
-    failed_check = _first_failed_check(verification_artifact)
-    if not isinstance(failed_check, dict):
-        return None
-    check_id = failed_check.get("id")
-    if check_id != "code-todo-api-ui":
+    if not _has_failed_check(verification_artifact, "code-todo-api-ui"):
         return None
 
     revision = proposal_payload.get("revision")

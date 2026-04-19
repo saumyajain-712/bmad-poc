@@ -1,6 +1,6 @@
 # Story 4.3: Propose Targeted Correction
 
-Status: review
+Status: done
 
 <!-- Ultimate context engine analysis completed - comprehensive developer guide created -->
 
@@ -39,6 +39,14 @@ so that developers have a clear path to resolve identified issues (**FR21**).
   - [x] Extend `backend/tests/test_runs.py` to assert code-phase mismatch produces deterministic `correction_proposal` in proposal artifact plus `correction_proposed` timeline event.
   - [x] Add a non-code or passing-verification case asserting no correction proposal/event.
   - [x] Add regenerate-path coverage: after `modify` for code phase, correction proposal updates with new revision and remains singular/coherent.
+
+### Review Findings
+
+- [x] [Review][Patch] Targeted mismatch detection depends on first failed check only [`backend/services/verification.py`]
+- [x] [Review][Patch] Bytecode cache artifacts are included in the committed diff [`backend/services/__pycache__/verification.cpython-311.pyc`, `backend/sql_app/__pycache__/crud.cpython-311.pyc`, `backend/sql_app/__pycache__/schemas.cpython-311.pyc`, `backend/tests/__pycache__/test_runs.cpython-311-pytest-9.0.2.pyc`]
+- [x] [Review][Patch] Missing regression test for multiple failures where `code-todo-api-ui` is failed but not first in checks [`backend/tests/test_runs.py`]
+- [x] [Review][Defer] Timeline event dedupe/equality still ignores several backend event keys used in blocked/transition paths [`frontend/src/features/run-initiation/RunInitiationForm.tsx`] — deferred, pre-existing
+- [x] [Review][Defer] Frontend event typing does not model several backend event fields used for deterministic timeline differentiation [`frontend/src/services/bmadService.ts`] — deferred, pre-existing
 
 ## Dev Notes
 

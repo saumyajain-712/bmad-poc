@@ -48,3 +48,8 @@
 ## Deferred from: code review of 4-2-detect-ui-api-mismatches.md (2026-04-19)
 
 - Tracked bytecode caches / `__pycache__` under `backend/` — same pre-existing hygiene bucket as Epic 3 deferrals; cleanup is repo-wide maintenance, not blocking Story 4.2 acceptance.
+
+## Deferred from: code review of 4-3-propose-targeted-correction.md (2026-04-19)
+
+- Timeline event dedupe/equality still ignores several backend event keys in blocked/transition paths (`frontend/src/features/run-initiation/RunInitiationForm.tsx`) — pre-existing timeline consistency hardening.
+- Frontend event typing does not model several backend event fields used for deterministic timeline differentiation (`frontend/src/services/bmadService.ts`) — pre-existing type alignment gap.
