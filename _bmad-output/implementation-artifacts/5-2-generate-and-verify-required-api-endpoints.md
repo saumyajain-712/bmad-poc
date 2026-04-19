@@ -1,6 +1,6 @@
 # Story 5.2: Generate and Verify Required API Endpoints
 
-Status: review
+Status: done
 
 <!-- Ultimate context engine analysis completed - comprehensive developer guide created -->
 
@@ -38,6 +38,13 @@ so that backend functionality is complete and correctly implemented (FR26).
   - [x] Add backend tests in `backend/tests/test_runs.py` (and related verification tests if needed) that validate required endpoint presence and verification outcomes.
   - [x] Add deterministic repeated-run assertions for endpoint verification results.
   - [x] Ensure unresolved endpoint verification failures still block progression.
+
+### Review Findings
+
+- [x] [Review][Patch] Normalize `.gitignore` to UTF-8 text and keep pycache ignore patterns effective [`.gitignore`:1]
+- [x] [Review][Patch] Make verification check registration idempotent to prevent duplicate checks on module reload [`backend/services/verification.py`:24]
+- [x] [Review][Defer] Verification gate currently blocks only failed checks with severity `critical`/`error`; failed checks with missing/non-blocking severity may not block progression [`backend/sql_app/crud.py`:120] — deferred, pre-existing
+- [x] [Review][Defer] Marker-based JSON fence extraction/replacement is fragile to malformed or unexpected fenced-block structure and should be hardened [`backend/services/verification.py`:212] — deferred, pre-existing
 
 ## Dev Notes
 

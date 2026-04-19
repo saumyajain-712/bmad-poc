@@ -23,7 +23,8 @@ _registered_checks: list[VerificationCheck] = []
 
 def register_verification_check(check: VerificationCheck) -> None:
     """Register an extra deterministic check. Used by Story 4.2+."""
-    _registered_checks.append(check)
+    if check not in _registered_checks:
+        _registered_checks.append(check)
 
 
 def _result(

@@ -57,3 +57,8 @@
 ## Deferred from: code review of 5-1-produce-working-todo-api-and-ui-output.md (2026-04-19)
 
 - API/UI create contract mismatch in generated code-phase proposal (`backend/services/orchestration.py`) is intentionally preserved for Epic 4 self-correction demo flow (Stories 4.2-4.4); aligning now would break the verification/correction narrative.
+
+## Deferred from: code review of 5-2-generate-and-verify-required-api-endpoints.md (2026-04-19)
+
+- Verification gate currently blocks only failed checks with severity `critical`/`error`; failed checks with missing/non-blocking severity may not block progression (`backend/sql_app/crud.py`) — deferred as pre-existing to current change set.
+- Marker-based JSON fence extraction/replacement is fragile to malformed or unexpected fenced-block structure (`backend/services/verification.py`) — deferred as pre-existing parser-hardening work.
