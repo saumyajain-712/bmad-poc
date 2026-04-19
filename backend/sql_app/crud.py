@@ -746,12 +746,12 @@ def delete_all_runs(db: Session) -> tuple[int, int]:
     """Remove every row from `runs` (POC environment reset).
 
     Returns (deleted_row_count, runs_remaining) where the second value is a
-    post-commit COUNT(*) on `runs` in the same session so callers can assert a
-    clean persisted state.
+    COUNT(*) on `runs` in the same transaction as the bulk delete (before
+    commit) so callers can assert a clean persisted state per AC4.
     """
     deleted = db.query(models.Run).delete(synchronize_session=False)
-    db.commit()
     remaining = db.query(models.Run).count()
+    db.commit()
     return deleted, remaining
 
 

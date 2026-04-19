@@ -1,6 +1,6 @@
 # Story 6.2: Clear Run Artifacts and State
 
-Status: review
+Status: done
 
 <!-- Ultimate context engine analysis completed - comprehensive developer guide created -->
 
@@ -101,7 +101,7 @@ Composer (Cursor agent)
 
 ### Completion Notes List
 
-- Extended `RunEnvironmentResetResponse` with `runs_remaining` (post-commit `COUNT` on `runs` in the same SQLAlchemy session after bulk delete).
+- Extended `RunEnvironmentResetResponse` with `runs_remaining` (`COUNT` on `runs` in the same DB transaction as the bulk delete, before commit).
 - `delete_all_runs` now returns `(deleted, remaining)`; reset route returns both counts; idempotent second reset yields `runs_deleted: 0`, `runs_remaining: 0`.
 - UI success copy: `Environment cleared (N runs stored). …` using server `runs_remaining`.
 - **File audit (AC3):** Ripgrep over `backend/**/*.py` found no `open(`, `Path.write`, `tempfile`, or similar run-scoped artifact writers; only `sqlite` URL in `database.py` and temp DB paths in tests. No extra disk cleanup added.
@@ -121,9 +121,18 @@ Composer (Cursor agent)
 ### Change Log
 
 - 2026-04-20: Story 6.2 — `runs_remaining` on reset API; CRUD count-after-delete; tests (single + multi + idempotent); frontend types and success message; sprint status → review.
+- 2026-04-20: Code review — `delete_all_runs` now counts remaining rows before `commit` (same transaction as delete); docstring aligned with AC4.
 
 ## Code review
 
 ### Review Findings
 
-_To be filled after review_
+- [x] [Review][Patch] Count `runs` in the same transaction as the bulk delete (move `COUNT` before `commit`), and align the `delete_all_runs` docstring with AC4 [`backend/sql_app/crud.py` ~745–756] — fixed
+
+### Review layers (2026-04-20)
+
+- **Blind Hunter:** Cynical pass on unified diff only — surfaced transaction/docstring mismatch, redundant `setMessage('')`, API shape change risk, missing defensive invariant if `remaining != 0`.
+- **Edge Case Hunter:** JSON triage — merged into the patch above (COUNT after `commit` vs same-transaction verification).
+- **Acceptance Auditor:** Story AC1–AC5 and tasks satisfied by behavior + tests + completion notes; AC4 wording prefers verification in the same transaction as the delete — one gap vs literal spec (see patch).
+
+**Triage:** 0 `decision-needed`, 1 `patch` (resolved), 0 `defer`, 8 dismissed (style nits, POC-only API versioning, OpenAPI examples, redundant `setMessage` clearing, etc.).
