@@ -15,6 +15,7 @@ type RunSnapshot = Pick<
   | 'phase_status_badges'
   | 'current_phase_proposal'
   | 'verification_review'
+  | 'final_output_review'
 >;
 
 const sortKeysDeep = (value: unknown): unknown => {
@@ -520,6 +521,56 @@ const RunInitiationForm: React.FC = () => {
               <p style={{ marginTop: 0, marginBottom: 0, fontSize: 13 }}>
                 <strong>Required next action:</strong> {latestRun.verification_review.required_next_action}
               </p>
+            </div>
+          )}
+          {latestRun.final_output_review && (
+            <div
+              style={{
+                marginTop: 10,
+                marginBottom: 10,
+                padding: '8px 10px',
+                border: '1px solid #cfd8dc',
+                borderRadius: '4px',
+                backgroundColor: '#f7fbff',
+              }}
+            >
+              <p style={{ marginTop: 0, marginBottom: 6 }}>
+                <strong>Final output review</strong>
+                {' '}
+                <span
+                  style={{
+                    padding: '2px 6px',
+                    borderRadius: 3,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    background: latestRun.final_output_review.verification_overview.blocked ? '#f2dede' : '#dff0d8',
+                    color: latestRun.final_output_review.verification_overview.blocked ? '#a94442' : '#3c763d',
+                  }}
+                >
+                  {latestRun.final_output_review.verification_overview.blocked ? 'blocked' : 'ready'}
+                </span>
+              </p>
+              <p style={{ marginTop: 0, marginBottom: 4, fontSize: 13 }}>
+                <strong>Summary:</strong> {latestRun.final_output_review.artifact_summary.summary || 'No summary available.'}
+              </p>
+              <p style={{ marginTop: 0, marginBottom: 4, fontSize: 13 }}>
+                <strong>Generated files:</strong> {latestRun.final_output_review.artifact_summary.total_files}
+                {' '}(
+                {latestRun.final_output_review.artifact_summary.backend_files.length} backend /{' '}
+                {latestRun.final_output_review.artifact_summary.frontend_files.length} frontend)
+              </p>
+              <p style={{ marginTop: 0, marginBottom: 4, fontSize: 13 }}>
+                <strong>Run locally:</strong> <code>{latestRun.final_output_review.review_access.backend_command}</code>
+                {' '}then <code>{latestRun.final_output_review.review_access.frontend_command}</code>
+              </p>
+              <p style={{ marginTop: 0, marginBottom: 4, fontSize: 13 }}>
+                <strong>Open:</strong> {latestRun.final_output_review.review_access.frontend_url}
+              </p>
+              {latestRun.final_output_review.verification_overview.blocker?.message ? (
+                <p style={{ marginTop: 0, marginBottom: 0, color: '#a94442', fontSize: 13 }}>
+                  <strong>Verification blocker:</strong> {latestRun.final_output_review.verification_overview.blocker.message}
+                </p>
+              ) : null}
             </div>
           )}
           <RunTimeline events={latestRun.context_events} />

@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
@@ -289,6 +290,76 @@ def build_verification_review_payload(
         "required_next_action": required_next_action,
         "deterministic_signature": (
             f"{phase}|rev-{normalized_revision}|ver-{normalized_overall}|corr-{correction_state}|blocked-{status == 'blocked'}"
+        ),
+    }
+
+
+def build_final_output_review_payload(
+    db_run: models.Run,
+    *,
+    phase: str | None,
+    blocker: dict[str, object] | None = None,
+) -> dict[str, object] | None:
+    if phase != "code":
+        return None
+    proposal_artifacts = (
+        db_run.proposal_artifacts
+        if isinstance(db_run.proposal_artifacts, dict)
+        else {}
+    )
+    proposal = proposal_artifacts.get("code")
+    if not isinstance(proposal, dict):
+        return None
+
+    content = proposal.get("content")
+    normalized_content = content if isinstance(content, str) else ""
+    expected_files = sorted(set(re.findall(r"`([^`]+)`", normalized_content)))
+    backend_files = [path for path in expected_files if path.startswith("backend/")]
+    frontend_files = [path for path in expected_files if path.startswith("frontend/")]
+
+    review_access = {
+        "local_only": True,
+        "backend_command": "cd backend && uvicorn main:app --reload",
+        "frontend_command": "cd frontend && npm run dev",
+        "frontend_url": "http://localhost:3000",
+        "api_base_url": "http://localhost:8000/api/v1",
+    }
+    unresolved_blocker = blocker or _build_verification_blocker(proposal)
+    verification_artifact = (
+        proposal.get("verification")
+        if isinstance(proposal.get("verification"), dict)
+        else {}
+    )
+    verification_overall = verification_artifact.get("overall")
+    normalized_overall = (
+        verification_overall
+        if isinstance(verification_overall, str) and verification_overall.strip()
+        else "unknown"
+    )
+    revision = proposal.get("revision")
+    normalized_revision = revision if isinstance(revision, int) else None
+    generated_at = proposal.get("generated_at")
+    generated_token = generated_at if isinstance(generated_at, str) else "unknown"
+
+    return {
+        "phase": "code",
+        "proposal_revision": normalized_revision,
+        "artifact_summary": {
+            "title": str(proposal.get("title") or "CODE Proposal"),
+            "summary": str(proposal.get("summary") or ""),
+            "backend_files": backend_files,
+            "frontend_files": frontend_files,
+            "total_files": len(expected_files),
+        },
+        "review_access": review_access,
+        "verification_overview": {
+            "overall": normalized_overall,
+            "blocked": isinstance(unresolved_blocker, dict),
+            "blocker": unresolved_blocker if isinstance(unresolved_blocker, dict) else None,
+        },
+        "deterministic_signature": (
+            f"code|rev-{normalized_revision}|gen-{generated_token}|"
+            f"files-{len(expected_files)}|blocked-{isinstance(unresolved_blocker, dict)}"
         ),
     }
 

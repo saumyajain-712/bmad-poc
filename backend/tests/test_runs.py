@@ -2842,3 +2842,74 @@ def test_read_run_includes_blocker_reason_in_verification_review_when_blocked(mo
         anyio.run(exercise)
     finally:
         app.dependency_overrides.clear()
+
+
+def test_read_run_exposes_deterministic_final_output_review_payload_for_code_phase(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Build deterministic todo deliverables for demo"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            db = TestingSessionLocal()
+            try:
+                db_run = db.query(models.Run).filter(models.Run.id == run_id).first()
+                assert db_run is not None
+                code_proposal = orchestration.build_phase_proposal_payload(
+                    run_id=run_id,
+                    phase="code",
+                    phase_output=orchestration.build_code_phase_proposal_content(
+                        "Build deterministic todo deliverables for demo"
+                    ),
+                    context_version=1,
+                    revision=1,
+                )
+                code_proposal["verification"] = {
+                    "overall": "failed",
+                    "checks": [
+                        {
+                            "id": "code-todo-api-ui",
+                            "passed": False,
+                            "severity": "critical",
+                            "message": "ui payload mismatch",
+                        }
+                    ],
+                }
+                db_run.proposal_artifacts = {"code": code_proposal}
+                db_run.status = "awaiting-approval"
+                db_run.current_phase = "code"
+                db_run.current_phase_index = 3
+                db_run.pending_approved_phase = "code"
+                db.add(db_run)
+                db.commit()
+            finally:
+                db.close()
+
+            read_one = await client.get(f"/api/v1/runs/{run_id}")
+            assert read_one.status_code == 200
+            payload_one = read_one.json()["final_output_review"]
+            assert payload_one["phase"] == "code"
+            assert payload_one["artifact_summary"]["total_files"] >= 1
+            assert payload_one["review_access"]["frontend_url"] == "http://localhost:3000"
+            assert payload_one["review_access"]["local_only"] is True
+            assert payload_one["verification_overview"]["blocked"] is True
+            assert payload_one["verification_overview"]["blocker"]["error_code"] == "unresolved_verification_blocker"
+            assert isinstance(payload_one["deterministic_signature"], str)
+
+            read_two = await client.get(f"/api/v1/runs/{run_id}")
+            assert read_two.status_code == 200
+            payload_two = read_two.json()["final_output_review"]
+            assert payload_one == payload_two
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()

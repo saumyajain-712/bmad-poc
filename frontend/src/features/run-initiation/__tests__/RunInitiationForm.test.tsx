@@ -59,6 +59,32 @@ const buildRun = (overrides: Record<string, unknown> = {}) => ({
     required_next_action: 'Apply or implement corrective changes and re-run verification.',
     deterministic_signature: 'code|rev-1|ver-failed|corr-proposed|blocked-True',
   },
+  final_output_review: {
+    phase: 'code',
+    proposal_revision: 1,
+    artifact_summary: {
+      title: 'CODE Proposal',
+      summary: 'Generated backend and frontend todo artifacts.',
+      backend_files: ['backend/main.py'],
+      frontend_files: ['frontend/src/features/todos/TodoApp.tsx'],
+      total_files: 2,
+    },
+    review_access: {
+      local_only: true,
+      backend_command: 'cd backend && uvicorn main:app --reload',
+      frontend_command: 'cd frontend && npm run dev',
+      frontend_url: 'http://localhost:3000',
+      api_base_url: 'http://localhost:8000/api/v1',
+    },
+    verification_overview: {
+      overall: 'failed',
+      blocked: true,
+      blocker: {
+        message: 'Progression blocked until unresolved critical verification mismatches are fixed.',
+      },
+    },
+    deterministic_signature: 'code|rev-1|gen-run-99|files-2|blocked-True',
+  },
   ...overrides,
 });
 
@@ -149,9 +175,30 @@ describe('RunInitiationForm correction apply controls', () => {
     expect(await screen.findByText(/Verification review/i)).toBeInTheDocument();
     expect(screen.getByText(/1 failed \/ 7 passed/i)).toBeInTheDocument();
     expect(screen.getByText(/Correction outcome:/i).parentElement).toHaveTextContent('proposed');
-    expect(screen.getByText(/Blocker:/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Blocker:/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Required next action:/i).parentElement).toHaveTextContent(
       'Apply or implement corrective changes and re-run verification.'
     );
+  });
+
+  it('renders final output review panel with local access hints and blocker visibility', async () => {
+    vi.mocked(createRun).mockResolvedValue({
+      run: buildRun(),
+      validation: { is_complete: true, missing_items: [], clarification_questions: [] },
+    });
+
+    render(<RunInitiationForm />);
+    fireEvent.change(screen.getByPlaceholderText(/Enter free-text API specification/i), {
+      target: { value: 'Create todo api' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Initiate BMAD Run/i }));
+
+    expect(await screen.findByText(/Final output review/i)).toBeInTheDocument();
+    expect(screen.getByText(/Generated files:/i).parentElement).toHaveTextContent('2');
+    expect(screen.getByText(/Run locally:/i).parentElement).toHaveTextContent(
+      'cd backend && uvicorn main:app --reload'
+    );
+    expect(screen.getByText(/Open:/i).parentElement).toHaveTextContent('http://localhost:3000');
+    expect(screen.getByText(/Verification blocker:/i)).toBeInTheDocument();
   });
 });

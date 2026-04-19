@@ -29,6 +29,7 @@ class Run(RunBase):
     blocked_reason: str | None = None
     can_advance_phase: bool = False
     verification_review: dict[str, object] | None = None
+    final_output_review: dict[str, object] | None = None
 
     class Config:
         orm_mode = True

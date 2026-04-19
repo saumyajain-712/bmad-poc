@@ -99,6 +99,36 @@ export interface VerificationReviewPayload {
     deterministic_signature: string;
 }
 
+export interface FinalOutputReviewPayload {
+    phase: string;
+    proposal_revision?: number | null;
+    artifact_summary: {
+        title: string;
+        summary: string;
+        backend_files: string[];
+        frontend_files: string[];
+        total_files: number;
+    };
+    review_access: {
+        local_only: boolean;
+        backend_command: string;
+        frontend_command: string;
+        frontend_url: string;
+        api_base_url: string;
+    };
+    verification_overview: {
+        overall: string;
+        blocked: boolean;
+        blocker?: {
+            error_code?: string;
+            message?: string;
+            unresolved_critical_count?: number;
+            next_action?: string;
+        } | null;
+    };
+    deterministic_signature: string;
+}
+
 export interface Run {
     id: number;
     api_specification: string;
@@ -114,6 +144,7 @@ export interface Run {
     proposal_artifacts: Record<string, Record<string, unknown>>;
     current_phase_proposal: Record<string, unknown> | null;
     verification_review?: VerificationReviewPayload | null;
+    final_output_review?: FinalOutputReviewPayload | null;
 }
 
 export interface CorrectionProposal {
