@@ -312,7 +312,87 @@ def _check_code_todo_api_ui_alignment(
     )
 
 
+def _check_code_required_todo_endpoints(
+    phase: str,
+    proposal: dict[str, Any],
+    _resolved: str | None,
+) -> dict[str, Any]:
+    """
+    For `code` phase only: assert required Todo endpoint contract is present and parseable.
+    """
+    if phase != "code":
+        return _result(
+            check_id="code-required-todo-endpoints",
+            passed=True,
+            message="skipped outside code phase",
+        )
+    raw = proposal.get("content")
+    if not isinstance(raw, str):
+        return _result(
+            check_id="code-required-todo-endpoints",
+            passed=False,
+            message="code phase content missing for endpoint verification",
+        )
+    api_data = _extract_json_fence_after_marker(raw, orchestration.CODE_PHASE_API_TODO_MARKER)
+    if api_data is None:
+        return _result(
+            check_id="code-required-todo-endpoints",
+            passed=False,
+            message="missing parseable api todo block (bmad-code marker)",
+        )
+
+    required_endpoints = api_data.get("required_endpoints")
+    if not isinstance(required_endpoints, list) or not all(
+        isinstance(item, str) for item in required_endpoints
+    ):
+        return _result(
+            check_id="code-required-todo-endpoints",
+            passed=False,
+            message="api required_endpoints must be a string list",
+        )
+
+    expected_endpoints = ["POST /todos", "GET /todos", "PATCH /todos/{id}"]
+    missing = [endpoint for endpoint in expected_endpoints if endpoint not in required_endpoints]
+    if missing:
+        return _result(
+            check_id="code-required-todo-endpoints",
+            passed=False,
+            message=f"required endpoint(s) missing from contract: {', '.join(missing)}",
+        )
+
+    operations = api_data.get("operations")
+    if not isinstance(operations, list) or not all(isinstance(item, str) for item in operations):
+        return _result(
+            check_id="code-required-todo-endpoints",
+            passed=False,
+            message="api operations must be a string list",
+        )
+    expected_ops = ["create", "list", "update-completion"]
+    missing_ops = [operation for operation in expected_ops if operation not in operations]
+    if missing_ops:
+        return _result(
+            check_id="code-required-todo-endpoints",
+            passed=False,
+            message=f"required todo operation(s) missing from contract: {', '.join(missing_ops)}",
+        )
+
+    resource = api_data.get("resource")
+    if resource != "/api/v1/todos":
+        return _result(
+            check_id="code-required-todo-endpoints",
+            passed=False,
+            message=f"expected resource '/api/v1/todos', got {resource!r}",
+        )
+
+    return _result(
+        check_id="code-required-todo-endpoints",
+        passed=True,
+        message="required todo endpoints and operations are present",
+    )
+
+
 register_verification_check(_check_code_todo_api_ui_alignment)
+register_verification_check(_check_code_required_todo_endpoints)
 
 
 def verification_event_summary(verification: dict[str, Any]) -> dict[str, Any]:
@@ -355,8 +435,8 @@ def build_correction_proposal(
     """
     Build deterministic correction guidance for known verification mismatches.
 
-    Story 4.3 scope:
-      - only for failed code-phase `code-todo-api-ui` mismatches
+    Story 4.3+ scope:
+      - for failed code-phase mismatches with deterministic targeted guidance
       - no wall-clock text, deterministic shape for the same inputs
     """
     if phase != "code":
@@ -366,18 +446,26 @@ def build_correction_proposal(
     if verification_artifact.get("overall") != "failed":
         return None
 
-    if not _has_failed_check(verification_artifact, "code-todo-api-ui"):
-        return None
-
     revision = proposal_payload.get("revision")
-    return {
-        "mismatch_id": "code-todo-api-ui",
-        "source_check_id": "code-todo-api-ui",
-        "revision": revision if isinstance(revision, int) else None,
-        "root_cause_summary": "UI todo create payload omits required field completed.",
-        "recommended_change_target": "frontend todo-create request payload",
-        "patch_guidance": "Include completed as a boolean in the UI todo create payload and keep fields aligned with the API required contract.",
-    }
+    if _has_failed_check(verification_artifact, "code-todo-api-ui"):
+        return {
+            "mismatch_id": "code-todo-api-ui",
+            "source_check_id": "code-todo-api-ui",
+            "revision": revision if isinstance(revision, int) else None,
+            "root_cause_summary": "UI todo create payload omits required field completed.",
+            "recommended_change_target": "frontend todo-create request payload",
+            "patch_guidance": "Include completed as a boolean in the UI todo create payload and keep fields aligned with the API required contract.",
+        }
+    if _has_failed_check(verification_artifact, "code-required-todo-endpoints"):
+        return {
+            "mismatch_id": "code-required-todo-endpoints",
+            "source_check_id": "code-required-todo-endpoints",
+            "revision": revision if isinstance(revision, int) else None,
+            "root_cause_summary": "Generated API contract is missing one or more required Todo endpoints/operations.",
+            "recommended_change_target": "backend code-phase API contract payload",
+            "patch_guidance": "Ensure required_endpoints includes POST /todos, GET /todos, PATCH /todos/{id}; operations include create, list, update-completion; and resource remains /api/v1/todos.",
+        }
+    return None
 
 
 def apply_correction_proposal(
@@ -389,40 +477,90 @@ def apply_correction_proposal(
     """
     Apply a deterministic correction to proposal payload content.
 
-    Story 4.4 scope:
-      - supports only code-phase `code-todo-api-ui`
+    Story 4.4+ scope:
+      - supports code-phase `code-todo-api-ui` and `code-required-todo-endpoints`
       - idempotent for the same revision/content
       - preserves marker blocks used by verification parser
     """
     if phase != "code":
         raise ValueError("unsupported_correction_phase")
     source_check_id = correction_proposal.get("source_check_id")
-    if source_check_id != "code-todo-api-ui":
+    if source_check_id not in {
+        "code-todo-api-ui",
+        "code-required-todo-endpoints",
+    }:
         raise ValueError("unsupported_correction_source_check")
     content = proposal_payload.get("content")
     if not isinstance(content, str):
         raise ValueError("invalid_proposal_content")
 
-    ui_data = _extract_json_fence_after_marker(content, orchestration.CODE_PHASE_UI_TODO_MARKER)
-    if not isinstance(ui_data, dict):
-        raise ValueError("missing_ui_marker_block")
-    ui_todo_create = ui_data.get("todo_create")
-    if not isinstance(ui_todo_create, dict):
-        raise ValueError("missing_ui_todo_create")
-    provided_fields = ui_todo_create.get("provided")
-    if not isinstance(provided_fields, list) or not all(
-        isinstance(item, str) for item in provided_fields
-    ):
-        raise ValueError("invalid_ui_provided_fields")
+    already_correct = False
+    if source_check_id == "code-todo-api-ui":
+        ui_data = _extract_json_fence_after_marker(content, orchestration.CODE_PHASE_UI_TODO_MARKER)
+        if not isinstance(ui_data, dict):
+            raise ValueError("missing_ui_marker_block")
+        ui_todo_create = ui_data.get("todo_create")
+        if not isinstance(ui_todo_create, dict):
+            raise ValueError("missing_ui_todo_create")
+        provided_fields = ui_todo_create.get("provided")
+        if not isinstance(provided_fields, list) or not all(
+            isinstance(item, str) for item in provided_fields
+        ):
+            raise ValueError("invalid_ui_provided_fields")
 
-    already_has_completed = "completed" in provided_fields
-    if not already_has_completed:
-        ui_todo_create["provided"] = [*provided_fields, "completed"]
-        content = _replace_json_fence_after_marker(
-            content,
-            orchestration.CODE_PHASE_UI_TODO_MARKER,
-            ui_data,
-        )
+        already_correct = "completed" in provided_fields
+        if not already_correct:
+            ui_todo_create["provided"] = [*provided_fields, "completed"]
+            content = _replace_json_fence_after_marker(
+                content,
+                orchestration.CODE_PHASE_UI_TODO_MARKER,
+                ui_data,
+            )
+    else:
+        api_data = _extract_json_fence_after_marker(content, orchestration.CODE_PHASE_API_TODO_MARKER)
+        if not isinstance(api_data, dict):
+            raise ValueError("missing_api_marker_block")
+        expected_endpoints = ["POST /todos", "GET /todos", "PATCH /todos/{id}"]
+        expected_operations = ["create", "list", "update-completion"]
+        changed = False
+
+        required_endpoints = api_data.get("required_endpoints")
+        if not isinstance(required_endpoints, list) or not all(
+            isinstance(item, str) for item in required_endpoints
+        ):
+            api_data["required_endpoints"] = list(expected_endpoints)
+            changed = True
+        else:
+            merged = list(required_endpoints)
+            for endpoint in expected_endpoints:
+                if endpoint not in merged:
+                    merged.append(endpoint)
+                    changed = True
+            api_data["required_endpoints"] = merged
+
+        operations = api_data.get("operations")
+        if not isinstance(operations, list) or not all(isinstance(item, str) for item in operations):
+            api_data["operations"] = list(expected_operations)
+            changed = True
+        else:
+            merged_ops = list(operations)
+            for operation in expected_operations:
+                if operation not in merged_ops:
+                    merged_ops.append(operation)
+                    changed = True
+            api_data["operations"] = merged_ops
+
+        if api_data.get("resource") != "/api/v1/todos":
+            api_data["resource"] = "/api/v1/todos"
+            changed = True
+
+        already_correct = not changed
+        if changed:
+            content = _replace_json_fence_after_marker(
+                content,
+                orchestration.CODE_PHASE_API_TODO_MARKER,
+                api_data,
+            )
 
     updated_payload = dict(proposal_payload)
     updated_payload["content"] = content
@@ -435,7 +573,7 @@ def apply_correction_proposal(
             if isinstance(proposal_payload.get("revision"), int)
             else None
         ),
-        "applied": not already_has_completed,
-        "idempotent_replay": already_has_completed,
+        "applied": not already_correct,
+        "idempotent_replay": already_correct,
     }
     return updated_payload, apply_metadata

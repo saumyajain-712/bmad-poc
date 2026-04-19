@@ -809,6 +809,7 @@ def apply_run_phase_correction(
         "unsupported_correction_source_check",
         "invalid_proposal_content",
         "missing_ui_marker_block",
+        "missing_api_marker_block",
         "missing_ui_todo_create",
         "invalid_ui_provided_fields",
     }:

@@ -1150,6 +1150,95 @@ def test_code_phase_generation_contract_is_deterministic_for_same_input():
     assert first == second
 
 
+def test_code_phase_generation_exposes_required_todo_endpoints_in_api_contract():
+    content = orchestration.build_code_phase_proposal_content(
+        "Build deterministic todo deliverables for demo",
+    )
+    api_contract = verification._extract_json_fence_after_marker(
+        content,
+        orchestration.CODE_PHASE_API_TODO_MARKER,
+    )
+    assert isinstance(api_contract, dict)
+    assert api_contract["required_endpoints"] == [
+        "POST /todos",
+        "GET /todos",
+        "PATCH /todos/{id}",
+    ]
+    assert api_contract["operations"] == ["create", "list", "update-completion"]
+    assert api_contract["resource"] == "/api/v1/todos"
+
+
+def test_run_phase_verification_flags_missing_required_todo_endpoint_with_actionable_message():
+    content = orchestration.build_code_phase_proposal_content(
+        "Build deterministic todo deliverables for demo",
+    ).replace('"PATCH /todos/{id}"', '"PATCH /todos/{id}-legacy"')
+    payload = orchestration.build_phase_proposal_payload(
+        run_id=9,
+        phase="code",
+        phase_output=content,
+        context_version=1,
+        revision=1,
+    )
+
+    artifact = verification.run_phase_verification(
+        phase="code",
+        proposal_payload=payload,
+        resolved_context_snapshot="snapshot",
+    )
+    endpoint_check = next(
+        check for check in artifact["checks"] if check["id"] == "code-required-todo-endpoints"
+    )
+    assert artifact["overall"] == "failed"
+    assert endpoint_check["passed"] is False
+    assert "PATCH /todos/{id}" in endpoint_check["message"]
+
+
+def test_code_endpoint_correction_proposal_and_apply_are_deterministic():
+    content = orchestration.build_code_phase_proposal_content(
+        "Build deterministic todo deliverables for demo",
+    )
+    content = content.replace('"PATCH /todos/{id}"', '"PATCH /todos/{id}-legacy"')
+    content = content.replace('"provided": ["title"]', '"provided": ["title", "completed"]')
+    payload = orchestration.build_phase_proposal_payload(
+        run_id=11,
+        phase="code",
+        phase_output=content,
+        context_version=1,
+        revision=2,
+    )
+    verification_artifact = verification.run_phase_verification(
+        phase="code",
+        proposal_payload=payload,
+        resolved_context_snapshot="snapshot",
+    )
+    correction = verification.build_correction_proposal(
+        phase="code",
+        proposal_payload=payload,
+        verification_artifact=verification_artifact,
+    )
+
+    assert isinstance(correction, dict)
+    assert correction["source_check_id"] == "code-required-todo-endpoints"
+
+    corrected_payload, metadata = verification.apply_correction_proposal(
+        phase="code",
+        proposal_payload=payload,
+        correction_proposal=correction,
+    )
+    corrected_artifact = verification.run_phase_verification(
+        phase="code",
+        proposal_payload=corrected_payload,
+        resolved_context_snapshot="snapshot",
+    )
+    assert metadata["source_check_id"] == "code-required-todo-endpoints"
+    assert metadata["applied"] is True
+    assert corrected_artifact["overall"] == "passed"
+    assert any(
+        check["id"] == "code-required-todo-endpoints" and check["passed"] is True
+        for check in corrected_artifact["checks"]
+    )
+
+
 def test_read_phase_proposal_returns_not_ready_until_generated(monkeypatch):
     app.dependency_overrides[get_db] = override_get_db
     mocked_orchestration = AsyncMock()

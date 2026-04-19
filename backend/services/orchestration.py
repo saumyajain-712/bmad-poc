@@ -144,6 +144,11 @@ def build_code_phase_proposal_content(resolved_input_context: str) -> str:
             "required": ["title", "completed"],
             "field_types": {"title": "string", "completed": "boolean"},
         },
+        "required_endpoints": [
+            "POST /todos",
+            "GET /todos",
+            "PATCH /todos/{id}",
+        ],
         "resource": "/api/v1/todos",
         "operations": ["create", "list", "update-completion"],
     }
