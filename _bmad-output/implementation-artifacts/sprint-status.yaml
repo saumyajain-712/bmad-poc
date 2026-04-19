@@ -69,7 +69,7 @@ development_status:
   epic-4: in-progress
   4-1-run-verification-checks: done
   4-2-detect-ui-api-mismatches: done
-  4-3-propose-targeted-correction: backlog
+  4-3-propose-targeted-correction: review
   4-4-apply-approved-corrections: backlog
   4-5-prevent-final-progression-on-unresolved-verification: backlog
   4-6-review-verification-outcomes-and-corrections: backlog

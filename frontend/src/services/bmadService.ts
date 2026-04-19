@@ -34,6 +34,8 @@ export interface RunTimelineEvent {
     };
     /** Proposal revision when present on governance / verification events */
     revision?: number;
+    source_check_id?: string;
+    compact_summary?: string;
 
     /** `resume-failed` / `resume-completed` (orchestration resume) */
     decision_type?: string;
@@ -57,6 +59,15 @@ export interface Run {
     phase_status_badges: Record<string, string>;
     proposal_artifacts: Record<string, Record<string, unknown>>;
     current_phase_proposal: Record<string, unknown> | null;
+}
+
+export interface CorrectionProposal {
+    mismatch_id: string;
+    source_check_id: string;
+    revision?: number | null;
+    root_cause_summary: string;
+    recommended_change_target: string;
+    patch_guidance: string;
 }
 
 interface CompletenessValidationResult {

@@ -61,6 +61,8 @@ const areEventsEqual = (left: RunTimelineEvent, right: RunTimelineEvent): boolea
   && optionalEqual(left.reason, right.reason)
   && optionalEqual(left.step, right.step)
   && optionalEqual(left.error_summary, right.error_summary)
+  && optionalEqual(left.source_check_id, right.source_check_id)
+  && optionalEqual(left.compact_summary, right.compact_summary)
   && artifactsEqual(left.artifact, right.artifact)
   && JSON.stringify(left.summary ?? null) === JSON.stringify(right.summary ?? null)
   && left.revision === right.revision
@@ -366,6 +368,35 @@ const RunInitiationForm: React.FC = () => {
                     : null}
                 </ul>
               </details>
+              {latestRun.current_phase_proposal.correction_proposal
+                && typeof latestRun.current_phase_proposal.correction_proposal === 'object' && (
+                <details style={{ marginTop: 8 }}>
+                  <summary style={{ cursor: 'pointer', fontSize: 13 }}>Correction proposal</summary>
+                  <ul style={{ marginBottom: 0, paddingLeft: 18, fontSize: 13 }}>
+                    <li>
+                      <strong>Mismatch:</strong>{' '}
+                      {String(
+                        (latestRun.current_phase_proposal.correction_proposal as Record<string, unknown>)
+                          .mismatch_id ?? '—'
+                      )}
+                    </li>
+                    <li>
+                      <strong>Target:</strong>{' '}
+                      {String(
+                        (latestRun.current_phase_proposal.correction_proposal as Record<string, unknown>)
+                          .recommended_change_target ?? '—'
+                      )}
+                    </li>
+                    <li>
+                      <strong>Guidance:</strong>{' '}
+                      {String(
+                        (latestRun.current_phase_proposal.correction_proposal as Record<string, unknown>)
+                          .patch_guidance ?? '—'
+                      )}
+                    </li>
+                  </ul>
+                </details>
+              )}
             </div>
           )}
           <RunTimeline events={latestRun.context_events} />

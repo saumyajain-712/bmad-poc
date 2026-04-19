@@ -69,6 +69,7 @@ const PHASE_GOVERNANCE_TYPES = new Set([
   'proposal_generated',
   'phase-context-consumed',
   VERIFICATION_CHECKS_COMPLETED_EVENT_TYPE,
+  'correction_proposed',
 ]);
 
 /**
@@ -187,6 +188,14 @@ export function formatEventDetailForTimeline(event: RunTimelineEvent): string {
     const fail = s?.fail_count ?? '—';
     const overall = s?.overall ?? '—';
     return `${phaseLabel} · verification · pass ${pass} · fail ${fail} · ${overall}`;
+  }
+
+  if (event.event_type === 'correction_proposed') {
+    const phaseLabel = getPhaseDisplayName(event.phase);
+    const source = event.source_check_id ?? 'unknown-check';
+    const summary = event.compact_summary;
+    const note = typeof summary === 'string' && summary.trim() ? ` · ${summary}` : '';
+    return `${phaseLabel} · correction proposed · ${source}${note}`;
   }
 
   if (event.event_type === 'phase-status-changed') {

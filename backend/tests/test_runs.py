@@ -779,6 +779,139 @@ def test_code_phase_modify_regenerates_preserves_api_ui_mismatch_verification(mo
         app.dependency_overrides.clear()
 
 
+def test_code_phase_failed_verification_persists_correction_proposal_and_event(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={
+                    "api_specification": "Create users API with CRUD and required fields name and email",
+                },
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            for phase in ("prd", "architecture", "stories"):
+                await client.post(f"/api/v1/runs/{run_id}/phases/{phase}/start")
+                await client.post(f"/api/v1/runs/{run_id}/phases/{phase}/approve")
+
+            await client.post(f"/api/v1/runs/{run_id}/phases/code/start")
+            run_payload = (await client.get(f"/api/v1/runs/{run_id}")).json()
+
+            code_proposal = run_payload["proposal_artifacts"]["code"]
+            correction = code_proposal.get("correction_proposal")
+            assert isinstance(correction, dict)
+            assert correction["mismatch_id"] == "code-todo-api-ui"
+            assert correction["source_check_id"] == "code-todo-api-ui"
+            assert correction["recommended_change_target"] == "frontend todo-create request payload"
+            assert "completed" in correction["patch_guidance"].lower()
+
+            correction_events = [
+                event
+                for event in run_payload["context_events"]
+                if event.get("event_type") == "correction_proposed"
+            ]
+            assert len(correction_events) == 1
+            assert correction_events[0]["phase"] == "code"
+            assert correction_events[0]["revision"] == 1
+            assert correction_events[0]["source_check_id"] == "code-todo-api-ui"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_non_code_phase_does_not_emit_correction_proposal(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+            run_payload = (await client.get(f"/api/v1/runs/{run_id}")).json()
+            prd_proposal = run_payload["proposal_artifacts"]["prd"]
+            assert "correction_proposal" not in prd_proposal
+            assert not any(
+                event.get("event_type") == "correction_proposed"
+                for event in run_payload["context_events"]
+            )
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_code_phase_modify_regeneration_updates_single_correction_event_per_revision(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={
+                    "api_specification": "Create users API with CRUD and required fields name and email",
+                },
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            for phase in ("prd", "architecture", "stories"):
+                await client.post(f"/api/v1/runs/{run_id}/phases/{phase}/start")
+                await client.post(f"/api/v1/runs/{run_id}/phases/{phase}/approve")
+
+            await client.post(f"/api/v1/runs/{run_id}/phases/code/start")
+            modify_response = await client.post(
+                f"/api/v1/runs/{run_id}/phases/code/modify",
+                json={
+                    "feedback": "Please align UI payload with API required fields.",
+                    "actor": "session:test",
+                    "proposal_revision": 1,
+                },
+            )
+            assert modify_response.status_code == 200
+
+            run_payload = (await client.get(f"/api/v1/runs/{run_id}")).json()
+            correction = run_payload["proposal_artifacts"]["code"].get("correction_proposal")
+            assert isinstance(correction, dict)
+            assert correction["revision"] == 2
+
+            correction_events = [
+                event
+                for event in run_payload["context_events"]
+                if event.get("event_type") == "correction_proposed"
+            ]
+            assert len(correction_events) == 2
+            assert [event.get("revision") for event in correction_events] == [1, 2]
+            assert all(
+                event.get("source_check_id") == "code-todo-api-ui"
+                for event in correction_events
+            )
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_run_phase_verification_code_mismatch_is_deterministic():
     phase_out = orchestration.build_code_phase_proposal_content(
         "Create users API with CRUD and required fields name and email",

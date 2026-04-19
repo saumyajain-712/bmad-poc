@@ -313,3 +313,51 @@ def verification_event_summary(verification: dict[str, Any]) -> dict[str, Any]:
         "fail_count": fail_count,
         "overall": overall if isinstance(overall, str) else "unknown",
     }
+
+
+def _first_failed_check(verification_artifact: dict[str, Any]) -> dict[str, Any] | None:
+    checks = verification_artifact.get("checks")
+    if not isinstance(checks, list):
+        return None
+    for check in checks:
+        if isinstance(check, dict) and not check.get("passed"):
+            return check
+    return None
+
+
+def build_correction_proposal(
+    *,
+    phase: str,
+    proposal_payload: dict[str, Any],
+    verification_artifact: dict[str, Any],
+) -> dict[str, Any] | None:
+    """
+    Build deterministic correction guidance for known verification mismatches.
+
+    Story 4.3 scope:
+      - only for failed code-phase `code-todo-api-ui` mismatches
+      - no wall-clock text, deterministic shape for the same inputs
+    """
+    if phase != "code":
+        return None
+    if not isinstance(verification_artifact, dict):
+        return None
+    if verification_artifact.get("overall") != "failed":
+        return None
+
+    failed_check = _first_failed_check(verification_artifact)
+    if not isinstance(failed_check, dict):
+        return None
+    check_id = failed_check.get("id")
+    if check_id != "code-todo-api-ui":
+        return None
+
+    revision = proposal_payload.get("revision")
+    return {
+        "mismatch_id": "code-todo-api-ui",
+        "source_check_id": "code-todo-api-ui",
+        "revision": revision if isinstance(revision, int) else None,
+        "root_cause_summary": "UI todo create payload omits required field completed.",
+        "recommended_change_target": "frontend todo-create request payload",
+        "patch_guidance": "Include completed as a boolean in the UI todo create payload and keep fields aligned with the API required contract.",
+    }

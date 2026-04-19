@@ -25,6 +25,17 @@ export function getNonToolDetailRows(event: RunTimelineEvent): DetailRow[] {
       rows.push({ label: 'Revision', value: String(event.revision) });
     }
   }
+  if (event.event_type === 'correction_proposed') {
+    if (event.source_check_id) {
+      rows.push({ label: 'Source check id', value: event.source_check_id });
+    }
+    if (event.revision !== undefined) {
+      rows.push({ label: 'Revision', value: String(event.revision) });
+    }
+    if (event.compact_summary) {
+      rows.push({ label: 'Summary', value: event.compact_summary });
+    }
+  }
 
   if (event.event_type === 'proposal_generation_failed') {
     if (event.step) rows.push({ label: 'Step', value: event.step });

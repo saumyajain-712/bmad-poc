@@ -494,6 +494,15 @@ def generate_phase_proposal(
         proposal_payload=proposal_payload,
         resolved_context_snapshot=resolved_ctx,
     )
+    correction_proposal = verification.build_correction_proposal(
+        phase=phase,
+        proposal_payload=proposal_payload,
+        verification_artifact=proposal_payload["verification"],
+    )
+    if correction_proposal is not None:
+        proposal_payload["correction_proposal"] = correction_proposal
+    else:
+        proposal_payload.pop("correction_proposal", None)
     proposal_artifacts[phase] = proposal_payload
     db_run.proposal_artifacts = proposal_artifacts
 
@@ -528,6 +537,16 @@ def generate_phase_proposal(
             "summary": ver_summary,
         }
     )
+    if correction_proposal is not None:
+        events.append(
+            {
+                "event_type": "correction_proposed",
+                "phase": phase,
+                "revision": proposal_payload["revision"],
+                "source_check_id": correction_proposal["source_check_id"],
+                "compact_summary": correction_proposal["root_cause_summary"],
+            }
+        )
     events.append(
         {
             "event_type": "proposal_generated",
@@ -955,6 +974,15 @@ def modify_phase_proposal(
         proposal_payload=regenerated_proposal,
         resolved_context_snapshot=resolved_ctx,
     )
+    correction_proposal = verification.build_correction_proposal(
+        phase=phase,
+        proposal_payload=regenerated_proposal,
+        verification_artifact=regenerated_proposal["verification"],
+    )
+    if correction_proposal is not None:
+        regenerated_proposal["correction_proposal"] = correction_proposal
+    else:
+        regenerated_proposal.pop("correction_proposal", None)
     proposal_artifacts[phase] = regenerated_proposal
     locked_run.proposal_artifacts = proposal_artifacts
 
@@ -980,6 +1008,16 @@ def modify_phase_proposal(
             "summary": ver_summary,
         }
     )
+    if correction_proposal is not None:
+        events.append(
+            {
+                "event_type": "correction_proposed",
+                "phase": phase,
+                "revision": regenerated_proposal["revision"],
+                "source_check_id": correction_proposal["source_check_id"],
+                "compact_summary": correction_proposal["root_cause_summary"],
+            }
+        )
     events.append(
         {
             "event_type": "proposal_regenerated",

@@ -104,6 +104,15 @@ class ProposalVerificationArtifact(BaseModel):
     checks: list[ProposalVerificationCheck] = Field(default_factory=list)
 
 
+class CorrectionProposalArtifact(BaseModel):
+    mismatch_id: str
+    source_check_id: str
+    revision: int | None = None
+    root_cause_summary: str
+    recommended_change_target: str
+    patch_guidance: str
+
+
 class PhaseProposalResponse(BaseModel):
     run_id: int
     phase: str
@@ -111,7 +120,8 @@ class PhaseProposalResponse(BaseModel):
         ...,
         description=(
             "Proposal artifact JSON; includes optional `verification` "
-            "(shape: ProposalVerificationArtifact)."
+            "(shape: ProposalVerificationArtifact) and optional "
+            "`correction_proposal` (shape: CorrectionProposalArtifact)."
         ),
     )
 
