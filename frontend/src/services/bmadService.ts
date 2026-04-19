@@ -183,6 +183,11 @@ export interface RunInitiationResponse {
     validation: CompletenessValidationResult;
 }
 
+export interface RunEnvironmentResetResponse {
+    status: string;
+    runs_deleted: number;
+}
+
 export interface ClarificationAnswer {
     question: string;
     answer: string;
@@ -202,6 +207,21 @@ export async function createRun(api_specification: string): Promise<RunInitiatio
     }
 
     return response.json() as Promise<RunInitiationResponse>;
+}
+
+export async function resetRunEnvironment(): Promise<RunEnvironmentResetResponse> {
+    const response = await fetch("/api/v1/runs/environment/reset", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+    });
+
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return response.json() as Promise<RunEnvironmentResetResponse>;
 }
 
 export async function submitRunClarifications(

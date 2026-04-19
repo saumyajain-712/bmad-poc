@@ -7,13 +7,14 @@ vi.mock('../../../services/bmadService', () => ({
   submitRunClarifications: vi.fn(),
   fetchRun: vi.fn(),
   applyPhaseCorrection: vi.fn(),
+  resetRunEnvironment: vi.fn(),
 }));
 
 vi.mock('../../run-observability/RunTimeline', () => ({
   default: () => <div data-testid="run-timeline" />,
 }));
 
-import { applyPhaseCorrection, createRun, fetchRun } from '../../../services/bmadService';
+import { applyPhaseCorrection, createRun, fetchRun, resetRunEnvironment } from '../../../services/bmadService';
 
 const buildRun = (overrides: Record<string, unknown> = {}) => ({
   id: 99,
@@ -200,6 +201,40 @@ describe('RunInitiationForm correction apply controls', () => {
     );
     expect(screen.getByText(/Open:/i).parentElement).toHaveTextContent('http://localhost:3000');
     expect(screen.getByText(/Verification blocker:/i)).toBeInTheDocument();
+  });
+});
+
+describe('RunInitiationForm reset environment (FR29)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+  });
+
+  it('calls resetRunEnvironment after confirm and clears run panels', async () => {
+    vi.mocked(resetRunEnvironment).mockResolvedValue({ status: 'ok', runs_deleted: 2 });
+    vi.mocked(createRun).mockResolvedValue({
+      run: buildRun(),
+      validation: { is_complete: true, missing_items: [], clarification_questions: [] },
+    });
+
+    render(<RunInitiationForm />);
+
+    fireEvent.change(screen.getByPlaceholderText(/Enter free-text API specification/i), {
+      target: { value: 'Create todo api' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Initiate BMAD Run/i }));
+
+    await screen.findByTestId('run-timeline');
+
+    fireEvent.click(screen.getByRole('button', { name: /Reset environment/i }));
+
+    expect(window.confirm).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(resetRunEnvironment).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('run-timeline')).not.toBeInTheDocument();
+    });
   });
 });
 

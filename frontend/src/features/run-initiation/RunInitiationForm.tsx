@@ -1,5 +1,11 @@
 import React, { useState } from 'react';
-import { applyPhaseCorrection, createRun, fetchRun, submitRunClarifications } from '../../services/bmadService';
+import {
+  applyPhaseCorrection,
+  createRun,
+  fetchRun,
+  resetRunEnvironment,
+  submitRunClarifications,
+} from '../../services/bmadService';
 import type { Run, RunTimelineEvent } from '../../services/bmadService';
 import RunTimeline from '../run-observability/RunTimeline';
 
@@ -122,6 +128,7 @@ const RunInitiationForm: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [latestRun, setLatestRun] = useState<RunSnapshot | null>(null);
   const [isApplyingCorrection, setIsApplyingCorrection] = useState<boolean>(false);
+  const [isResettingEnvironment, setIsResettingEnvironment] = useState<boolean>(false);
 
   const normalizeQuestions = (questions: string[]): string[] => (
     [...questions].sort((a, b) => a.localeCompare(b))
@@ -284,9 +291,70 @@ const RunInitiationForm: React.FC = () => {
     }
   };
 
+  const handleResetEnvironment = async () => {
+    if (isResettingEnvironment || isSubmitting) {
+      return;
+    }
+    if (
+      !window.confirm(
+        'Reset the run environment? This permanently deletes all persisted runs for this deployment and cannot be undone.'
+      )
+    ) {
+      return;
+    }
+    try {
+      setIsResettingEnvironment(true);
+      setError('');
+      await resetRunEnvironment();
+      setApiSpec('');
+      setMessage('');
+      setClarificationQuestions([]);
+      setClarificationAnswers({});
+      setIsAwaitingClarification(false);
+      setRunId(null);
+      setLatestRun(null);
+      setMessage('Run environment reset. You can start a fresh demo.');
+    } catch (err) {
+      setError('Failed to reset run environment. Please try again.');
+      console.error(err);
+    } finally {
+      setIsResettingEnvironment(false);
+    }
+  };
+
   return (
     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '500px', margin: '20px auto' }}>
       <h2>Initiate New BMAD Run</h2>
+      <section
+        aria-label="Run administration"
+        style={{
+          border: '1px solid #e0e0e0',
+          borderRadius: '4px',
+          padding: '10px',
+          backgroundColor: '#fafafa',
+        }}
+      >
+        <p style={{ marginTop: 0, marginBottom: 8, fontWeight: 600 }}>Run administration</p>
+        <p style={{ marginTop: 0, marginBottom: 8, fontSize: 13, color: '#555' }}>
+          Clear all persisted run data on the server and return this page to an input-ready state for a new demo.
+        </p>
+        <button
+          type="button"
+          onClick={handleResetEnvironment}
+          disabled={isResettingEnvironment || isSubmitting}
+          style={{
+            padding: '8px 12px',
+            backgroundColor: '#c9302c',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: isResettingEnvironment || isSubmitting ? 'not-allowed' : 'pointer',
+            opacity: isResettingEnvironment || isSubmitting ? 0.7 : 1,
+          }}
+        >
+          {isResettingEnvironment ? 'Resetting…' : 'Reset environment'}
+        </button>
+      </section>
       <textarea
         value={apiSpec}
         onChange={(e) => setApiSpec(e.target.value)}

@@ -93,6 +93,16 @@ async def create_new_run(run: schemas.RunCreate, db: Session = Depends(get_db)):
     return {"run": db_run, "validation": validation_result}
 
 
+@router.post(
+    "/runs/environment/reset",
+    response_model=schemas.RunEnvironmentResetResponse,
+)
+def reset_run_environment(db: Session = Depends(get_db)):
+    """Delete all persisted runs for this deployment (operator demo reset)."""
+    n = crud.delete_all_runs(db)
+    return schemas.RunEnvironmentResetResponse(status="ok", runs_deleted=n)
+
+
 @router.get("/runs/{run_id}", response_model=schemas.Run)
 def read_run(run_id: int, db: Session = Depends(get_db)):
     db_run = crud.get_run(db, run_id=run_id)

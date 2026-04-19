@@ -47,6 +47,11 @@ class RunInitiationResponse(BaseModel):
     validation: CompletenessValidationResult
 
 
+class RunEnvironmentResetResponse(BaseModel):
+    status: str = "ok"
+    runs_deleted: int
+
+
 class ClarificationAnswer(BaseModel):
     question: str
     answer: str

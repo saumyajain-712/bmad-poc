@@ -742,6 +742,13 @@ def get_run(db: Session, run_id: int):
     return db.query(models.Run).filter(models.Run.id == run_id).first()
 
 
+def delete_all_runs(db: Session) -> int:
+    """Remove every row from `runs` (POC environment reset). Returns deleted row count."""
+    deleted = db.query(models.Run).delete(synchronize_session=False)
+    db.commit()
+    return deleted
+
+
 def update_run_after_clarification(
     db: Session,
     db_run: models.Run,
