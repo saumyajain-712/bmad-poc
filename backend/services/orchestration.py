@@ -135,29 +135,48 @@ CODE_PHASE_UI_TODO_MARKER = "<!-- bmad-code:ui-todo -->"
 
 def build_code_phase_proposal_content(resolved_input_context: str) -> str:
     """
-    Deterministic dual artifact for the demo slice: API requires `completed: boolean` on Todo create;
-    UI payload omits `completed` so verification can detect the mismatch (FR20).
+    Deterministic code-phase demo deliverable contract for a runnable Todo slice.
+    Keeps API/UI marker blocks for verification and correction flow compatibility.
     """
     ref = resolved_input_context.strip()
     api_obj = {
         "todo_create": {
             "required": ["title", "completed"],
             "field_types": {"title": "string", "completed": "boolean"},
-        }
+        },
+        "resource": "/api/v1/todos",
+        "operations": ["create", "list", "update-completion"],
     }
     ui_obj = {
         "todo_create": {
             "provided": ["title"],
             "field_types": {"title": "string"},
-        }
+        },
+        "api_base": "/api/v1/todos",
+        "flows": ["list", "create", "toggle-complete"],
     }
     api_json = json.dumps(api_obj, sort_keys=True)
     ui_json = json.dumps(ui_obj, sort_keys=True)
     return (
         "# Code phase proposal (simulated generation)\n\n"
         f"Reference resolved input context:\n{ref}\n\n"
+        "## Generated backend Todo API deliverable contract\n\n"
+        "Expected backend files and minimum content for runnable slice:\n"
+        "- `backend/main.py` includes FastAPI app wiring for `/api/v1/todos` routes.\n"
+        "- `backend/api/v1/endpoints/todos.py` exposes endpoints:\n"
+        "  - `POST /api/v1/todos` (create todo)\n"
+        "  - `GET /api/v1/todos` (list todos)\n"
+        "  - `PATCH /api/v1/todos/{id}` (update completion state)\n"
+        "- `backend/sql_app/schemas.py` includes request/response contracts with `title` and `completed`.\n"
+        "- `backend/sql_app/models.py` includes Todo persistence model fields `id`, `title`, `completed`.\n\n"
         f"{CODE_PHASE_API_TODO_MARKER}\n"
         f"```json\n{api_json}\n```\n\n"
+        "## Generated frontend Todo UI deliverable contract\n\n"
+        "Expected frontend files and minimum content for runnable slice:\n"
+        "- `frontend/src/features/todos/TodoApp.tsx` renders list and create form.\n"
+        "- `frontend/src/features/todos/todoService.ts` calls `/api/v1/todos` endpoints.\n"
+        "- UI interactions include create, list refresh, and toggle completion.\n"
+        "- Output remains deterministic for identical run inputs.\n\n"
         f"{CODE_PHASE_UI_TODO_MARKER}\n"
         f"```json\n{ui_json}\n```\n"
     )

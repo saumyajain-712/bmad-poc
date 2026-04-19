@@ -1127,6 +1127,29 @@ def test_run_phase_verification_code_mismatch_is_deterministic():
     assert a["overall"] == "failed"
 
 
+def test_code_phase_generation_includes_todo_api_and_ui_contract_markers():
+    content = orchestration.build_code_phase_proposal_content(
+        "Build deterministic todo deliverables for demo",
+    )
+
+    assert "Generated backend Todo API deliverable contract" in content
+    assert "POST /api/v1/todos" in content
+    assert "GET /api/v1/todos" in content
+    assert "PATCH /api/v1/todos/{id}" in content
+    assert "Generated frontend Todo UI deliverable contract" in content
+    assert "frontend/src/features/todos/TodoApp.tsx" in content
+    assert orchestration.CODE_PHASE_API_TODO_MARKER in content
+    assert orchestration.CODE_PHASE_UI_TODO_MARKER in content
+
+
+def test_code_phase_generation_contract_is_deterministic_for_same_input():
+    seed = "todo demo with create list update-completion"
+    first = orchestration.build_code_phase_proposal_content(seed)
+    second = orchestration.build_code_phase_proposal_content(seed)
+
+    assert first == second
+
+
 def test_read_phase_proposal_returns_not_ready_until_generated(monkeypatch):
     app.dependency_overrides[get_db] = override_get_db
     mocked_orchestration = AsyncMock()

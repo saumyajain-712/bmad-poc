@@ -1,5 +1,5 @@
 # generated: 2026-04-10T12:50:40.1627074+05:30
-# last_updated: 2026-04-19T21:45:55+05:30
+# last_updated: 2026-04-19T22:55:00+05:30
 # project: bmad-poc
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-10T12:50:40.1627074+05:30
-last_updated: 2026-04-19T21:45:55+05:30
+last_updated: 2026-04-19T22:55:00+05:30
 project: bmad-poc
 project_key: NOKEY
 tracking_system: file-system
@@ -74,8 +74,8 @@ development_status:
   4-5-prevent-final-progression-on-unresolved-verification: done
   4-6-review-verification-outcomes-and-corrections: done
   epic-4-retrospective: optional
-  epic-5: backlog
-  5-1-produce-working-todo-api-and-ui-output: backlog
+  epic-5: in-progress
+  5-1-produce-working-todo-api-and-ui-output: review
   5-2-generate-and-verify-required-api-endpoints: backlog
   5-3-review-final-generated-output: backlog
   5-4-present-run-complete-state: backlog
