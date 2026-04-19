@@ -14,6 +14,7 @@ type RunSnapshot = Pick<
   | 'phase_statuses'
   | 'phase_status_badges'
   | 'current_phase_proposal'
+  | 'verification_review'
 >;
 
 const sortKeysDeep = (value: unknown): unknown => {
@@ -452,6 +453,66 @@ const RunInitiationForm: React.FC = () => {
                   </button>
                 </details>
               )}
+            </div>
+          )}
+          {latestRun.verification_review && (
+            <div
+              style={{
+                marginTop: 10,
+                marginBottom: 10,
+                padding: '8px 10px',
+                border: '1px solid #d6e9c6',
+                borderRadius: '4px',
+                backgroundColor: '#fcfdf6',
+              }}
+            >
+              <p style={{ marginTop: 0, marginBottom: 6 }}>
+                <strong>Verification review</strong>
+                {' '}
+                <span
+                  style={{
+                    padding: '2px 6px',
+                    borderRadius: 3,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    background:
+                      latestRun.verification_review.status === 'blocked'
+                        ? '#f2dede'
+                        : latestRun.verification_review.verification.overall === 'passed'
+                        ? '#dff0d8'
+                        : '#fcf8e3',
+                    color:
+                      latestRun.verification_review.status === 'blocked'
+                        ? '#a94442'
+                        : latestRun.verification_review.verification.overall === 'passed'
+                        ? '#3c763d'
+                        : '#8a6d3b',
+                  }}
+                >
+                  {latestRun.verification_review.status}
+                </span>
+              </p>
+              <p style={{ marginTop: 0, marginBottom: 4, fontSize: 13 }}>
+                <strong>Mismatch summary:</strong>
+                {' '}
+                {latestRun.verification_review.verification.fail_count}
+                {' '}failed /{' '}
+                {latestRun.verification_review.verification.pass_count}
+                {' '}passed
+              </p>
+              <p style={{ marginTop: 0, marginBottom: 4, fontSize: 13 }}>
+                <strong>Correction outcome:</strong>
+                {' '}
+                {latestRun.verification_review.correction.state}
+              </p>
+              {latestRun.verification_review.blocker ? (
+                <p style={{ marginTop: 0, marginBottom: 4, color: '#a94442', fontSize: 13 }}>
+                  <strong>Blocker:</strong> {latestRun.verification_review.blocker.message || 'Progression is currently blocked.'}
+                </p>
+              ) : null}
+              <p style={{ marginTop: 0, marginBottom: 0, fontSize: 13 }}>
+                <strong>Required next action:</strong> {latestRun.verification_review.required_next_action}
+              </p>
             </div>
           )}
           <RunTimeline events={latestRun.context_events} />

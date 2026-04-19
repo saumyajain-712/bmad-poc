@@ -471,6 +471,12 @@ describe('RunTimeline', () => {
             phase: 'code',
             revision: 1,
             source_check_id: 'code-todo-api-ui',
+            mismatch_id: 'code-todo-api-ui',
+            mismatch_category: 'code',
+            action_type: 'applied',
+            before_verification_overall: 'failed',
+            after_verification_overall: 'passed',
+            result: 'passed',
             summary: { pass_count: 8, fail_count: 0, overall: 'passed' },
             timestamp: '2026-04-17T16:00:15Z',
           },
@@ -481,7 +487,14 @@ describe('RunTimeline', () => {
     const row = screen.getByRole('listitem');
     expect(row).toHaveAttribute('data-timeline-variant', 'phase-governance');
     expect(row).toHaveTextContent('correction applied');
-    expect(row).toHaveTextContent('verification passed');
+    expect(row).toHaveTextContent('verification failed → passed');
+    expect(row).toHaveTextContent('result passed');
+
+    fireEvent.click(screen.getByRole('button', { name: /Details for/ }));
+    expect(screen.getByText('Mismatch id')).toBeInTheDocument();
+    expect(screen.getAllByText('code-todo-api-ui').length).toBeGreaterThan(0);
+    expect(screen.getByText('Correction result')).toBeInTheDocument();
+    expect(screen.getAllByText('passed').length).toBeGreaterThan(0);
   });
 
   it('adds a phase-scope boundary cue when working phase changes between adjacent rows', () => {

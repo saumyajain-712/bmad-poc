@@ -35,6 +35,30 @@ const buildRun = (overrides: Record<string, unknown> = {}) => ({
       patch_guidance: 'Include completed field',
     },
   },
+  verification_review: {
+    phase: 'code',
+    proposal_revision: 1,
+    verification: {
+      overall: 'failed',
+      pass_count: 7,
+      fail_count: 1,
+      failed_checks: [{ id: 'code-todo-api-ui', severity: 'critical', message: 'mismatch' }],
+    },
+    correction: {
+      state: 'proposed',
+      mismatch_id: 'code-todo-api-ui',
+      mismatch_category: 'code',
+    },
+    blocker: {
+      error_code: 'unresolved_verification_blocker',
+      message: 'Progression blocked until unresolved critical verification mismatches are fixed.',
+      unresolved_critical_count: 1,
+      next_action: 'Apply or implement corrective changes and re-run verification.',
+    },
+    status: 'blocked',
+    required_next_action: 'Apply or implement corrective changes and re-run verification.',
+    deterministic_signature: 'code|rev-1|ver-failed|corr-proposed|blocked-True',
+  },
   ...overrides,
 });
 
@@ -108,5 +132,26 @@ describe('RunInitiationForm correction apply controls', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Apply correction/i })).toBeEnabled();
     });
+  });
+
+  it('renders verification review blocker summary and required action', async () => {
+    vi.mocked(createRun).mockResolvedValue({
+      run: buildRun(),
+      validation: { is_complete: true, missing_items: [], clarification_questions: [] },
+    });
+
+    render(<RunInitiationForm />);
+    fireEvent.change(screen.getByPlaceholderText(/Enter free-text API specification/i), {
+      target: { value: 'Create todo api' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Initiate BMAD Run/i }));
+
+    expect(await screen.findByText(/Verification review/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 failed \/ 7 passed/i)).toBeInTheDocument();
+    expect(screen.getByText(/Correction outcome:/i).parentElement).toHaveTextContent('proposed');
+    expect(screen.getByText(/Blocker:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Required next action:/i).parentElement).toHaveTextContent(
+      'Apply or implement corrective changes and re-run verification.'
+    );
   });
 });

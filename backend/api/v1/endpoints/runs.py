@@ -132,6 +132,11 @@ def read_run(run_id: int, db: Session = Depends(get_db)):
     db_run.current_phase_proposal = (
         proposal_artifacts.get(proposal_phase) if proposal_phase else None
     )
+    db_run.verification_review = crud.build_verification_review_payload(
+        db_run,
+        phase=proposal_phase,
+        blocker=blocker,
+    )
     return db_run
 
 

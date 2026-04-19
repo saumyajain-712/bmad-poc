@@ -28,6 +28,7 @@ class Run(RunBase):
     awaiting_user_decision: bool = False
     blocked_reason: str | None = None
     can_advance_phase: bool = False
+    verification_review: dict[str, object] | None = None
 
     class Config:
         orm_mode = True

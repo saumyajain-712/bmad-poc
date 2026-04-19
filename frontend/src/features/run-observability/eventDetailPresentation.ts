@@ -26,6 +26,15 @@ export function getNonToolDetailRows(event: RunTimelineEvent): DetailRow[] {
     }
   }
   if (event.event_type === 'correction_proposed') {
+    if (event.mismatch_id) {
+      rows.push({ label: 'Mismatch id', value: event.mismatch_id });
+    }
+    if (event.mismatch_category) {
+      rows.push({ label: 'Mismatch category', value: event.mismatch_category });
+    }
+    if (event.action_type) {
+      rows.push({ label: 'Action type', value: event.action_type });
+    }
     if (event.source_check_id) {
       rows.push({ label: 'Source check id', value: event.source_check_id });
     }
@@ -37,6 +46,24 @@ export function getNonToolDetailRows(event: RunTimelineEvent): DetailRow[] {
     }
   }
   if (event.event_type === 'correction_applied') {
+    if (event.mismatch_id) {
+      rows.push({ label: 'Mismatch id', value: event.mismatch_id });
+    }
+    if (event.mismatch_category) {
+      rows.push({ label: 'Mismatch category', value: event.mismatch_category });
+    }
+    if (event.action_type) {
+      rows.push({ label: 'Action type', value: event.action_type });
+    }
+    if (event.before_verification_overall) {
+      rows.push({ label: 'Verification before', value: event.before_verification_overall });
+    }
+    if (event.after_verification_overall) {
+      rows.push({ label: 'Verification after', value: event.after_verification_overall });
+    }
+    if (event.result) {
+      rows.push({ label: 'Correction result', value: event.result });
+    }
     if (event.source_check_id) {
       rows.push({ label: 'Source check id', value: event.source_check_id });
     }

@@ -39,6 +39,12 @@ export interface RunTimelineEvent {
     status?: string;
     attempted_action?: string;
     proposal_revision?: number;
+    mismatch_id?: string;
+    mismatch_category?: string;
+    action_type?: string;
+    before_verification_overall?: string;
+    after_verification_overall?: string;
+    result?: string;
     blocker?: {
         error_code?: string;
         message?: string;
@@ -59,6 +65,40 @@ export interface RunTimelineEvent {
     no_op?: boolean;
 }
 
+export interface VerificationReviewPayload {
+    phase: string;
+    proposal_revision?: number | null;
+    verification: {
+        overall: string;
+        pass_count: number;
+        fail_count: number;
+        failed_checks: Array<{
+            id: string;
+            severity: string;
+            message: string;
+        }>;
+        ran_at?: string;
+    };
+    correction: {
+        state: 'none' | 'proposed' | 'applied' | string;
+        mismatch_id?: string | null;
+        mismatch_category?: string;
+        proposed?: Record<string, unknown> | null;
+        applied?: Record<string, unknown> | null;
+    };
+    blocker?: {
+        error_code?: string;
+        message?: string;
+        verification_overall?: string;
+        unresolved_critical_count?: number;
+        unresolved_critical_checks?: Array<{ id?: string; severity?: string }>;
+        next_action?: string;
+    } | null;
+    status: string;
+    required_next_action: string;
+    deterministic_signature: string;
+}
+
 export interface Run {
     id: number;
     api_specification: string;
@@ -73,6 +113,7 @@ export interface Run {
     phase_status_badges: Record<string, string>;
     proposal_artifacts: Record<string, Record<string, unknown>>;
     current_phase_proposal: Record<string, unknown> | null;
+    verification_review?: VerificationReviewPayload | null;
 }
 
 export interface CorrectionProposal {

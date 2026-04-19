@@ -195,16 +195,19 @@ export function formatEventDetailForTimeline(event: RunTimelineEvent): string {
   if (event.event_type === 'correction_proposed') {
     const phaseLabel = getPhaseDisplayName(event.phase);
     const source = event.source_check_id ?? 'unknown-check';
+    const mismatch = event.mismatch_id ? ` · ${event.mismatch_id}` : '';
     const summary = event.compact_summary;
     const note = typeof summary === 'string' && summary.trim() ? ` · ${summary}` : '';
-    return `${phaseLabel} · correction proposed · ${source}${note}`;
+    return `${phaseLabel} · correction proposed · ${source}${mismatch}${note}`;
   }
 
   if (event.event_type === 'correction_applied') {
     const phaseLabel = getPhaseDisplayName(event.phase);
     const source = event.source_check_id ?? 'unknown-check';
-    const overall = event.summary?.overall ?? 'unknown';
-    return `${phaseLabel} · correction applied · ${source} · verification ${overall}`;
+    const before = event.before_verification_overall ?? 'unknown';
+    const after = event.after_verification_overall ?? event.summary?.overall ?? 'unknown';
+    const result = event.result ? ` · result ${event.result}` : '';
+    return `${phaseLabel} · correction applied · ${source} · verification ${before} → ${after}${result}`;
   }
 
   if (event.event_type === 'phase-status-changed') {
@@ -230,8 +233,9 @@ export function formatEventDetailForTimeline(event: RunTimelineEvent): string {
   if (event.event_type === 'verification_gate_blocked') {
     const phaseLabel = getPhaseDisplayName(event.phase);
     const unresolvedCount = event.blocker?.unresolved_critical_count;
+    const nextAction = event.blocker?.next_action;
     if (typeof unresolvedCount === 'number') {
-      return `Verification gate blocked · ${phaseLabel} · unresolved critical checks ${unresolvedCount}`;
+      return `Verification gate blocked · ${phaseLabel} · unresolved critical checks ${unresolvedCount}${nextAction ? ` · ${nextAction}` : ''}`;
     }
     return `Verification gate blocked · ${phaseLabel}`;
   }

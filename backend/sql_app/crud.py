@@ -170,6 +170,129 @@ def _build_verification_blocker(
     }
 
 
+def build_verification_review_payload(
+    db_run: models.Run,
+    *,
+    phase: str | None,
+    blocker: dict[str, object] | None = None,
+) -> dict[str, object] | None:
+    if not isinstance(phase, str) or not phase.strip():
+        return None
+    proposal_artifacts = (
+        db_run.proposal_artifacts
+        if isinstance(db_run.proposal_artifacts, dict)
+        else {}
+    )
+    proposal = proposal_artifacts.get(phase)
+    if not isinstance(proposal, dict):
+        return None
+
+    revision = proposal.get("revision")
+    normalized_revision = revision if isinstance(revision, int) else None
+    verification_artifact = (
+        proposal.get("verification") if isinstance(proposal.get("verification"), dict) else {}
+    )
+    checks = (
+        verification_artifact.get("checks")
+        if isinstance(verification_artifact.get("checks"), list)
+        else []
+    )
+    failed_checks: list[dict[str, str]] = []
+    pass_count = 0
+    fail_count = 0
+    for raw_check in checks:
+        if not isinstance(raw_check, dict):
+            continue
+        if raw_check.get("passed") is True:
+            pass_count += 1
+        elif raw_check.get("passed") is False:
+            fail_count += 1
+            failed_checks.append(
+                {
+                    "id": str(raw_check.get("id") or "unknown-check"),
+                    "severity": str(raw_check.get("severity") or "unknown"),
+                    "message": str(raw_check.get("message") or ""),
+                }
+            )
+    verification_overall = verification_artifact.get("overall")
+    normalized_overall = (
+        verification_overall
+        if isinstance(verification_overall, str) and verification_overall.strip()
+        else "unknown"
+    )
+
+    correction_proposal = (
+        proposal.get("correction_proposal")
+        if isinstance(proposal.get("correction_proposal"), dict)
+        else None
+    )
+    correction_applied = (
+        proposal.get("correction_applied")
+        if isinstance(proposal.get("correction_applied"), dict)
+        else None
+    )
+    mismatch_id = None
+    if isinstance(correction_proposal, dict) and isinstance(correction_proposal.get("mismatch_id"), str):
+        mismatch_id = correction_proposal.get("mismatch_id")
+    elif isinstance(correction_applied, dict) and isinstance(correction_applied.get("source_check_id"), str):
+        mismatch_id = correction_applied.get("source_check_id")
+    mismatch_category = (
+        str(mismatch_id).split("-", 1)[0] if isinstance(mismatch_id, str) and "-" in mismatch_id else "general"
+    )
+    correction_state = (
+        "applied"
+        if isinstance(correction_applied, dict)
+        else "proposed"
+        if isinstance(correction_proposal, dict)
+        else "none"
+    )
+    unresolved_blocker = blocker or _build_verification_blocker(proposal)
+    required_next_action = (
+        str((unresolved_blocker or {}).get("next_action") or "")
+        if isinstance(unresolved_blocker, dict)
+        else ""
+    )
+    if not required_next_action:
+        required_next_action = (
+            "Apply the proposed correction and refresh verification."
+            if correction_state == "proposed"
+            else "Address unresolved verification mismatches before progressing."
+            if normalized_overall == "failed"
+            else "Ready for approval and phase progression."
+        )
+    status = (
+        "blocked"
+        if isinstance(unresolved_blocker, dict)
+        else "needs-correction"
+        if normalized_overall == "failed"
+        else "ready"
+    )
+    return {
+        "phase": phase,
+        "proposal_revision": normalized_revision,
+        "verification": {
+            "overall": normalized_overall,
+            "pass_count": pass_count,
+            "fail_count": fail_count,
+            "failed_checks": failed_checks,
+            "ran_at": verification_artifact.get("ran_at"),
+        },
+        "correction": {
+            "state": correction_state,
+            "mismatch_id": mismatch_id,
+            "mismatch_category": mismatch_category,
+            "proposed": correction_proposal,
+            "applied": correction_applied,
+        },
+        "blocker": unresolved_blocker if isinstance(unresolved_blocker, dict) else None,
+        "status": status,
+        "required_next_action": required_next_action,
+        "deterministic_signature": (
+            f"{phase}|rev-{normalized_revision}|ver-{normalized_overall}|corr-{correction_state}|blocked-{status == 'blocked'}"
+        ),
+    }
+
+
 def _append_blocked_transition_event(
     events: list[dict],
     *,
@@ -672,6 +795,17 @@ def generate_phase_proposal(
                 "phase": phase,
                 "revision": proposal_payload["revision"],
                 "source_check_id": correction_proposal["source_check_id"],
+                "mismatch_id": correction_proposal.get("mismatch_id"),
+                "mismatch_category": (
+                    str(correction_proposal.get("mismatch_id")).split("-", 1)[0]
+                    if isinstance(correction_proposal.get("mismatch_id"), str)
+                    and "-" in str(correction_proposal.get("mismatch_id"))
+                    else "general"
+                ),
+                "action_type": "proposed",
+                "before_verification_overall": proposal_payload.get("verification", {}).get("overall"),
+                "after_verification_overall": proposal_payload.get("verification", {}).get("overall"),
+                "result": "pending",
                 "compact_summary": correction_proposal["root_cause_summary"],
             }
         )
@@ -1256,6 +1390,10 @@ def apply_phase_correction(
     deterministic_timestamp = (
         f"correction|{proposal.get('generated_at')}|rev-{current_revision}"
     )
+    prior_verification = proposal.get("verification") if isinstance(proposal.get("verification"), dict) else {}
+    prior_overall = prior_verification.get("overall") if isinstance(prior_verification.get("overall"), str) else "unknown"
+    updated_verification = corrected_payload.get("verification") if isinstance(corrected_payload.get("verification"), dict) else {}
+    updated_overall = updated_verification.get("overall") if isinstance(updated_verification.get("overall"), str) else "unknown"
     corrected_payload["correction_applied"] = {
         "applied_at": deterministic_timestamp,
         "applied_by": actor,
@@ -1278,6 +1416,17 @@ def apply_phase_correction(
             "phase": phase,
             "revision": current_revision,
             "source_check_id": correction_proposal.get("source_check_id"),
+            "mismatch_id": correction_proposal.get("mismatch_id"),
+            "mismatch_category": (
+                str(correction_proposal.get("mismatch_id")).split("-", 1)[0]
+                if isinstance(correction_proposal.get("mismatch_id"), str)
+                and "-" in str(correction_proposal.get("mismatch_id"))
+                else "general"
+            ),
+            "action_type": "applied",
+            "before_verification_overall": prior_overall,
+            "after_verification_overall": updated_overall,
+            "result": "passed" if updated_overall == "passed" else "failed",
             "summary": ver_summary,
             "timestamp": deterministic_timestamp,
         }
