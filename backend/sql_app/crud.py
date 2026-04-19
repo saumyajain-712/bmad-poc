@@ -1394,6 +1394,11 @@ def apply_phase_correction(
     prior_overall = prior_verification.get("overall") if isinstance(prior_verification.get("overall"), str) else "unknown"
     updated_verification = corrected_payload.get("verification") if isinstance(corrected_payload.get("verification"), dict) else {}
     updated_overall = updated_verification.get("overall") if isinstance(updated_verification.get("overall"), str) else "unknown"
+    correction_result = (
+        updated_overall
+        if updated_overall in {"passed", "failed", "blocked", "pending", "unknown"}
+        else "unknown"
+    )
     corrected_payload["correction_applied"] = {
         "applied_at": deterministic_timestamp,
         "applied_by": actor,
@@ -1426,7 +1431,7 @@ def apply_phase_correction(
             "action_type": "applied",
             "before_verification_overall": prior_overall,
             "after_verification_overall": updated_overall,
-            "result": "passed" if updated_overall == "passed" else "failed",
+            "result": correction_result,
             "summary": ver_summary,
             "timestamp": deterministic_timestamp,
         }

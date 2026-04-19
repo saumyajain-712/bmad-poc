@@ -63,9 +63,16 @@ const areEventsEqual = (left: RunTimelineEvent, right: RunTimelineEvent): boolea
   && optionalEqual(left.step, right.step)
   && optionalEqual(left.error_summary, right.error_summary)
   && optionalEqual(left.source_check_id, right.source_check_id)
+  && optionalEqual(left.mismatch_id, right.mismatch_id)
+  && optionalEqual(left.mismatch_category, right.mismatch_category)
+  && optionalEqual(left.action_type, right.action_type)
+  && optionalEqual(left.before_verification_overall, right.before_verification_overall)
+  && optionalEqual(left.after_verification_overall, right.after_verification_overall)
+  && optionalEqual(left.result, right.result)
   && optionalEqual(left.compact_summary, right.compact_summary)
   && artifactsEqual(left.artifact, right.artifact)
   && JSON.stringify(left.summary ?? null) === JSON.stringify(right.summary ?? null)
+  && JSON.stringify(left.blocker ?? null) === JSON.stringify(right.blocker ?? null)
   && left.revision === right.revision
 );
 

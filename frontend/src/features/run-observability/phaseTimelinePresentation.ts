@@ -237,7 +237,7 @@ export function formatEventDetailForTimeline(event: RunTimelineEvent): string {
     if (typeof unresolvedCount === 'number') {
       return `Verification gate blocked · ${phaseLabel} · unresolved critical checks ${unresolvedCount}${nextAction ? ` · ${nextAction}` : ''}`;
     }
-    return `Verification gate blocked · ${phaseLabel}`;
+    return `Verification gate blocked · ${phaseLabel}${nextAction ? ` · ${nextAction}` : ''}`;
   }
 
   if (event.previous_phase || event.next_phase) {

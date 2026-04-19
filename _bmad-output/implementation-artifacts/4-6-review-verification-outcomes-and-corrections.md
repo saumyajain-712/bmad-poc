@@ -1,6 +1,6 @@
 # Story 4.6: Review Verification Outcomes and Corrections
 
-Status: review
+Status: done
 
 <!-- Ultimate context engine analysis completed - comprehensive developer guide created -->
 
@@ -39,6 +39,14 @@ so that I can understand the impact of automated fixes and make informed decisio
   - [x] Add backend tests in `backend/tests/test_runs.py` for verification-review payload correctness and deterministic content across repeated runs.
   - [x] Add backend tests validating unresolved blocker reason appears in review payload when progression is blocked.
   - [x] Add frontend tests in timeline/review test suites to assert rendering of mismatch summary, correction outcome, and blocker guidance.
+
+### Review Findings
+
+- [x] [Review][Decision] Verification review blocker source-of-truth ambiguity — resolved: keep proactive visibility behavior (retain derived fallback blocker computation in review payload).
+- [x] [Review][Patch] Generated artifacts committed to source control (`node_modules` and `__pycache__`) [frontend/node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/results.json:1]
+- [x] [Review][Patch] Correction result collapses non-passed outcomes to failed [backend/sql_app/crud.py:1416]
+- [x] [Review][Patch] Timeline merge comparator omits new correction metadata fields, risking stale event rows [frontend/src/features/run-initiation/RunInitiationForm.tsx:50]
+- [x] [Review][Patch] Timeline blocked message drops `next_action` when unresolved count is missing [frontend/src/features/run-observability/phaseTimelinePresentation.ts:233]
 
 ## Dev Notes
 
