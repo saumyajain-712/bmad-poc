@@ -678,6 +678,75 @@ def test_modify_regenerates_persists_verification_and_timeline_order(monkeypatch
         app.dependency_overrides.clear()
 
 
+def test_code_phase_verification_detects_api_ui_mismatch(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={
+                    "api_specification": "Create users API with CRUD and required fields name and email",
+                },
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            for phase in ("prd", "architecture", "stories"):
+                await client.post(f"/api/v1/runs/{run_id}/phases/{phase}/start")
+                run_payload = (await client.get(f"/api/v1/runs/{run_id}")).json()
+                assert (
+                    run_payload["proposal_artifacts"][phase]["verification"]["overall"]
+                    == "passed"
+                )
+                await client.post(f"/api/v1/runs/{run_id}/phases/{phase}/approve")
+
+            await client.post(f"/api/v1/runs/{run_id}/phases/code/start")
+            run_payload = (await client.get(f"/api/v1/runs/{run_id}")).json()
+            ver = run_payload["proposal_artifacts"]["code"]["verification"]
+            assert ver["overall"] == "failed"
+            code_check = next(
+                c
+                for c in ver["checks"]
+                if isinstance(c, dict) and c.get("id") == "code-todo-api-ui"
+            )
+            assert code_check["passed"] is False
+            assert "completed" in (code_check.get("message") or "").lower()
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_run_phase_verification_code_mismatch_is_deterministic():
+    phase_out = orchestration.build_code_phase_proposal_content(
+        "Create users API with CRUD and required fields name and email",
+    )
+    payload = orchestration.build_phase_proposal_payload(
+        run_id=7,
+        phase="code",
+        phase_output=phase_out,
+        context_version=2,
+        revision=1,
+    )
+    a = verification.run_phase_verification(
+        phase="code",
+        proposal_payload=payload,
+        resolved_context_snapshot="snapshot",
+    )
+    b = verification.run_phase_verification(
+        phase="code",
+        proposal_payload=payload,
+        resolved_context_snapshot="snapshot",
+    )
+    assert a == b
+    assert a["overall"] == "failed"
+
+
 def test_read_phase_proposal_returns_not_ready_until_generated(monkeypatch):
     app.dependency_overrides[get_db] = override_get_db
     mocked_orchestration = AsyncMock()

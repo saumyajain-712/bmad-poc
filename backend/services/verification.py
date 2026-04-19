@@ -6,8 +6,12 @@ Additional checks can be registered via `register_verification_check` (Story 4.2
 
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Callable
 from typing import Any
+
+from backend.services import orchestration
 
 VERIFICATION_SCHEMA_VERSION = 1
 
@@ -203,6 +207,93 @@ def run_phase_verification(
         "overall": overall,
         "checks": checks_out,
     }
+
+
+def _extract_json_fence_after_marker(content: str, marker: str) -> dict[str, Any] | None:
+    if marker not in content:
+        return None
+    start = content.index(marker) + len(marker)
+    after = content[start:]
+    m = re.search(r"```json\s*([\s\S]*?)```", after)
+    if not m:
+        return None
+    try:
+        parsed = json.loads(m.group(1).strip())
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _check_code_todo_api_ui_alignment(
+    phase: str,
+    proposal: dict[str, Any],
+    _resolved: str | None,
+) -> dict[str, Any]:
+    """
+    For `code` phase only: compare Todo create required fields (API) vs UI-provided fields.
+    Fails when API requires `completed` but UI does not list it (FR20 demo slice).
+    """
+    if phase != "code":
+        return _result(
+            check_id="code-todo-api-ui",
+            passed=True,
+            message="skipped outside code phase",
+        )
+    raw = proposal.get("content")
+    if not isinstance(raw, str):
+        return _result(
+            check_id="code-todo-api-ui",
+            passed=False,
+            message="code phase content missing for api/ui comparison",
+        )
+    api_data = _extract_json_fence_after_marker(raw, orchestration.CODE_PHASE_API_TODO_MARKER)
+    ui_data = _extract_json_fence_after_marker(raw, orchestration.CODE_PHASE_UI_TODO_MARKER)
+    if api_data is None or ui_data is None:
+        return _result(
+            check_id="code-todo-api-ui",
+            passed=False,
+            message="missing parseable api/ui todo blocks (bmad-code markers)",
+        )
+    api_tc = api_data.get("todo_create")
+    ui_tc = ui_data.get("todo_create")
+    if not isinstance(api_tc, dict) or not isinstance(ui_tc, dict):
+        return _result(
+            check_id="code-todo-api-ui",
+            passed=False,
+            message="todo_create object missing in api/ui json",
+        )
+    required = api_tc.get("required")
+    provided = ui_tc.get("provided")
+    if not isinstance(required, list) or not all(isinstance(x, str) for x in required):
+        return _result(
+            check_id="code-todo-api-ui",
+            passed=False,
+            message="api todo_create.required must be a string list",
+        )
+    if not isinstance(provided, list) or not all(isinstance(x, str) for x in provided):
+        return _result(
+            check_id="code-todo-api-ui",
+            passed=False,
+            message="ui todo_create.provided must be a string list",
+        )
+    req_set = set(required)
+    prov_set = set(provided)
+    missing = sorted(req_set - prov_set)
+    if missing:
+        miss = ", ".join(missing)
+        return _result(
+            check_id="code-todo-api-ui",
+            passed=False,
+            message=f"UI todo create missing required field(s): {miss}",
+        )
+    return _result(
+        check_id="code-todo-api-ui",
+        passed=True,
+        message="todo create ui fields cover api required fields",
+    )
+
+
+register_verification_check(_check_code_todo_api_ui_alignment)
 
 
 def verification_event_summary(verification: dict[str, Any]) -> dict[str, Any]:

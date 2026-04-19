@@ -326,12 +326,17 @@ def start_run_phase(
         phase=normalized_phase,
         context_source="resolved_input_context",
     )
+    phase_output = (
+        orchestration.build_code_phase_proposal_content(resolved_context)
+        if normalized_phase == "code"
+        else resolved_context
+    )
     try:
         updated_run, proposal_payload = crud.generate_phase_proposal(
             db=db,
             db_run=updated_run,
             phase=normalized_phase,
-            phase_output=resolved_context,
+            phase_output=phase_output,
         )
     except Exception as exc:
         updated_run = crud.record_proposal_generation_failure(

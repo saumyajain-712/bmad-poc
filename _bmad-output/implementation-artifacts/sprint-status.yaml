@@ -1,5 +1,5 @@
 # generated: 2026-04-10T12:50:40.1627074+05:30
-# last_updated: 2026-04-19T20:15:00+05:30
+# last_updated: 2026-04-19T22:45:00+05:30
 # project: bmad-poc
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-10T12:50:40.1627074+05:30
-last_updated: 2026-04-19T20:15:00+05:30
+last_updated: 2026-04-19T22:45:00+05:30
 project: bmad-poc
 project_key: NOKEY
 tracking_system: file-system
@@ -68,7 +68,7 @@ development_status:
   epic-3-retrospective: optional
   epic-4: in-progress
   4-1-run-verification-checks: done
-  4-2-detect-ui-api-mismatches: backlog
+  4-2-detect-ui-api-mismatches: review
   4-3-propose-targeted-correction: backlog
   4-4-apply-approved-corrections: backlog
   4-5-prevent-final-progression-on-unresolved-verification: backlog

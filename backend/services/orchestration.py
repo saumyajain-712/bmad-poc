@@ -1,3 +1,5 @@
+import json
+
 PHASE_SEQUENCE: tuple[str, ...] = ("prd", "architecture", "stories", "code")
 TERMINAL_PHASE = PHASE_SEQUENCE[-1]
 
@@ -124,6 +126,41 @@ def _normalize_summary(content: str, limit: int = 160) -> str:
     if len(compact) <= limit:
         return compact
     return compact[: limit - 3].rstrip() + "..."
+
+
+# Markers for deterministic code-phase API vs UI snippets (Story 4.2, FR20). Parsed by verification.
+CODE_PHASE_API_TODO_MARKER = "<!-- bmad-code:api-todo -->"
+CODE_PHASE_UI_TODO_MARKER = "<!-- bmad-code:ui-todo -->"
+
+
+def build_code_phase_proposal_content(resolved_input_context: str) -> str:
+    """
+    Deterministic dual artifact for the demo slice: API requires `completed: boolean` on Todo create;
+    UI payload omits `completed` so verification can detect the mismatch (FR20).
+    """
+    ref = resolved_input_context.strip()
+    api_obj = {
+        "todo_create": {
+            "required": ["title", "completed"],
+            "field_types": {"title": "string", "completed": "boolean"},
+        }
+    }
+    ui_obj = {
+        "todo_create": {
+            "provided": ["title"],
+            "field_types": {"title": "string"},
+        }
+    }
+    api_json = json.dumps(api_obj, sort_keys=True)
+    ui_json = json.dumps(ui_obj, sort_keys=True)
+    return (
+        "# Code phase proposal (simulated generation)\n\n"
+        f"Reference resolved input context:\n{ref}\n\n"
+        f"{CODE_PHASE_API_TODO_MARKER}\n"
+        f"```json\n{api_json}\n```\n\n"
+        f"{CODE_PHASE_UI_TODO_MARKER}\n"
+        f"```json\n{ui_json}\n```\n"
+    )
 
 
 def build_phase_proposal_payload(
