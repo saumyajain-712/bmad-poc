@@ -305,7 +305,7 @@ const RunInitiationForm: React.FC = () => {
     try {
       setIsResettingEnvironment(true);
       setError('');
-      await resetRunEnvironment();
+      const resetResult = await resetRunEnvironment();
       setApiSpec('');
       setMessage('');
       setClarificationQuestions([]);
@@ -313,7 +313,9 @@ const RunInitiationForm: React.FC = () => {
       setIsAwaitingClarification(false);
       setRunId(null);
       setLatestRun(null);
-      setMessage('Run environment reset. You can start a fresh demo.');
+      setMessage(
+        `Environment cleared (${resetResult.runs_remaining} runs stored). You can start a fresh demo.`
+      );
     } catch (err) {
       setError('Failed to reset run environment. Please try again.');
       console.error(err);

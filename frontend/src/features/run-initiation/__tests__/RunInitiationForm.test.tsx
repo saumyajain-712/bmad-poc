@@ -211,7 +211,11 @@ describe('RunInitiationForm reset environment (FR29)', () => {
   });
 
   it('calls resetRunEnvironment after confirm and clears run panels', async () => {
-    vi.mocked(resetRunEnvironment).mockResolvedValue({ status: 'ok', runs_deleted: 2 });
+    vi.mocked(resetRunEnvironment).mockResolvedValue({
+      status: 'ok',
+      runs_deleted: 2,
+      runs_remaining: 0,
+    });
     vi.mocked(createRun).mockResolvedValue({
       run: buildRun(),
       validation: { is_complete: true, missing_items: [], clarification_questions: [] },

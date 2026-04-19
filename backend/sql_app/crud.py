@@ -742,11 +742,17 @@ def get_run(db: Session, run_id: int):
     return db.query(models.Run).filter(models.Run.id == run_id).first()
 
 
-def delete_all_runs(db: Session) -> int:
-    """Remove every row from `runs` (POC environment reset). Returns deleted row count."""
+def delete_all_runs(db: Session) -> tuple[int, int]:
+    """Remove every row from `runs` (POC environment reset).
+
+    Returns (deleted_row_count, runs_remaining) where the second value is a
+    post-commit COUNT(*) on `runs` in the same session so callers can assert a
+    clean persisted state.
+    """
     deleted = db.query(models.Run).delete(synchronize_session=False)
     db.commit()
-    return deleted
+    remaining = db.query(models.Run).count()
+    return deleted, remaining
 
 
 def update_run_after_clarification(

@@ -50,6 +50,10 @@ class RunInitiationResponse(BaseModel):
 class RunEnvironmentResetResponse(BaseModel):
     status: str = "ok"
     runs_deleted: int
+    runs_remaining: int = Field(
+        ...,
+        description="Rows remaining in `runs` after delete+commit; must be 0 for a clean deployment.",
+    )
 
 
 class ClarificationAnswer(BaseModel):

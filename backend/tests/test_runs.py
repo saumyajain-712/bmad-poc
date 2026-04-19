@@ -3135,6 +3135,37 @@ def test_read_run_exposes_deterministic_final_output_review_payload_for_code_pha
         app.dependency_overrides.clear()
 
 
+def test_reset_run_environment_single_run():
+    """After one persisted run, reset reports runs_deleted=1 and runs_remaining=0."""
+    app.dependency_overrides[get_db] = override_get_db
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            await client.post("/api/v1/runs/environment/reset")
+
+            created = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create a user authentication API"},
+            )
+            assert created.status_code == 200
+            run_id = created.json()["run"]["id"]
+
+            reset = await client.post("/api/v1/runs/environment/reset")
+            assert reset.status_code == 200
+            body = reset.json()
+            assert body["runs_deleted"] == 1
+            assert body["runs_remaining"] == 0
+
+            gone = await client.get(f"/api/v1/runs/{run_id}")
+            assert gone.status_code == 404
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_reset_run_environment():
     app.dependency_overrides[get_db] = override_get_db
 
@@ -3163,6 +3194,7 @@ def test_reset_run_environment():
             body = reset.json()
             assert body["status"] == "ok"
             assert body["runs_deleted"] == 2
+            assert body["runs_remaining"] == 0
 
             for rid in (run_id_a, run_id_b):
                 gone = await client.get(f"/api/v1/runs/{rid}")
@@ -3170,7 +3202,9 @@ def test_reset_run_environment():
 
             again = await client.post("/api/v1/runs/environment/reset")
             assert again.status_code == 200
-            assert again.json()["runs_deleted"] == 0
+            again_body = again.json()
+            assert again_body["runs_deleted"] == 0
+            assert again_body["runs_remaining"] == 0
 
     try:
         anyio.run(exercise)

@@ -186,6 +186,8 @@ export interface RunInitiationResponse {
 export interface RunEnvironmentResetResponse {
     status: string;
     runs_deleted: number;
+    /** Post-delete row count from the server; 0 means no persisted run state remains. */
+    runs_remaining: number;
 }
 
 export interface ClarificationAnswer {
