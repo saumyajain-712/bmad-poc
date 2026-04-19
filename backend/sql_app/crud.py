@@ -367,6 +367,26 @@ def build_final_output_review_payload(
     }
 
 
+def derive_run_complete(
+    db_run: models.Run,
+    final_output_review: dict[str, object] | None,
+) -> bool:
+    """FR28: True when terminal workflow succeeded and final output review has no verification blocker.
+
+    Composes ``status``, ``final_output_review.verification_overview`` (same blocker source as
+    :func:`build_final_output_review_payload`). Does not treat ``phase_statuses['code']`` as
+    ``approved`` — sequence completion uses ``status == 'phase-sequence-complete'`` only.
+    """
+    if db_run.status != "phase-sequence-complete":
+        return False
+    if not isinstance(final_output_review, dict):
+        return False
+    overview = final_output_review.get("verification_overview")
+    if not isinstance(overview, dict):
+        return False
+    return overview.get("blocked") is False
+
+
 def _looks_like_relative_path(token: str) -> bool:
     candidate = token.strip()
     # Keep only path-like code artifacts (e.g., backend/main.py, frontend/src/App.tsx).

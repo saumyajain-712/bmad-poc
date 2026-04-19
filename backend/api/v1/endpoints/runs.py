@@ -142,6 +142,7 @@ def read_run(run_id: int, db: Session = Depends(get_db)):
         phase=proposal_phase,
         blocker=blocker,
     )
+    db_run.run_complete = crud.derive_run_complete(db_run, db_run.final_output_review)
     return db_run
 
 

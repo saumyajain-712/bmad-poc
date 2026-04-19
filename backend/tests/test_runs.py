@@ -1502,6 +1502,125 @@ def test_phase_advancement_enforces_canonical_sequence(monkeypatch):
             assert final_run_response.status_code == 200
             final_run = final_run_response.json()
             assert final_run["status"] == "phase-sequence-complete"
+            review_blocked = final_run["final_output_review"]["verification_overview"]["blocked"]
+            assert final_run["run_complete"] is (review_blocked is False)
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_read_run_run_complete_true_when_unblocked_and_sequence_complete(monkeypatch):
+    """FR28: run_complete when terminal status and final output review is not blocked."""
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Build deterministic todo deliverables for demo"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            db = TestingSessionLocal()
+            try:
+                db_run = db.query(models.Run).filter(models.Run.id == run_id).first()
+                assert db_run is not None
+                code_proposal = orchestration.build_phase_proposal_payload(
+                    run_id=run_id,
+                    phase="code",
+                    phase_output=orchestration.build_code_phase_proposal_content(
+                        "Build deterministic todo deliverables for demo"
+                    ),
+                    context_version=1,
+                    revision=1,
+                )
+                code_proposal["verification"] = {
+                    "overall": "passed",
+                    "checks": [{"id": "code-todo-api-ui", "passed": True, "severity": "critical", "message": "ok"}],
+                }
+                db_run.proposal_artifacts = {"code": code_proposal}
+                db_run.status = "phase-sequence-complete"
+                db_run.current_phase = "code"
+                db_run.current_phase_index = 3
+                db_run.pending_approved_phase = None
+                db.add(db_run)
+                db.commit()
+            finally:
+                db.close()
+
+            read_run = await client.get(f"/api/v1/runs/{run_id}")
+            assert read_run.status_code == 200
+            body = read_run.json()
+            assert body["run_complete"] is True
+            assert body["final_output_review"]["verification_overview"]["blocked"] is False
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_read_run_run_complete_false_when_verification_blocked_even_if_status_complete(monkeypatch):
+    """FR28 guardrail: do not signal completion when final output review still shows a blocker."""
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Build deterministic todo deliverables for demo"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+
+            db = TestingSessionLocal()
+            try:
+                db_run = db.query(models.Run).filter(models.Run.id == run_id).first()
+                assert db_run is not None
+                code_proposal = orchestration.build_phase_proposal_payload(
+                    run_id=run_id,
+                    phase="code",
+                    phase_output=orchestration.build_code_phase_proposal_content(
+                        "Build deterministic todo deliverables for demo"
+                    ),
+                    context_version=1,
+                    revision=1,
+                )
+                code_proposal["verification"] = {
+                    "overall": "failed",
+                    "checks": [
+                        {
+                            "id": "code-todo-api-ui",
+                            "passed": False,
+                            "severity": "critical",
+                            "message": "ui payload mismatch",
+                        }
+                    ],
+                }
+                db_run.proposal_artifacts = {"code": code_proposal}
+                db_run.status = "phase-sequence-complete"
+                db_run.current_phase = "code"
+                db_run.current_phase_index = 3
+                db_run.pending_approved_phase = None
+                db.add(db_run)
+                db.commit()
+            finally:
+                db.close()
+
+            read_run = await client.get(f"/api/v1/runs/{run_id}")
+            assert read_run.status_code == 200
+            body = read_run.json()
+            assert body["run_complete"] is False
+            assert body["final_output_review"]["verification_overview"]["blocked"] is True
 
     try:
         anyio.run(exercise)
@@ -2895,6 +3014,7 @@ def test_read_run_exposes_deterministic_final_output_review_payload_for_code_pha
 
             read_one = await client.get(f"/api/v1/runs/{run_id}")
             assert read_one.status_code == 200
+            assert read_one.json()["run_complete"] is False
             payload_one = read_one.json()["final_output_review"]
             assert payload_one["phase"] == "code"
             assert payload_one["artifact_summary"]["total_files"] >= 1

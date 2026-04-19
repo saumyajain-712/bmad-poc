@@ -30,6 +30,7 @@ class Run(RunBase):
     can_advance_phase: bool = False
     verification_review: dict[str, object] | None = None
     final_output_review: dict[str, object] | None = None
+    run_complete: bool = False
 
     class Config:
         orm_mode = True

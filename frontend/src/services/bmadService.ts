@@ -145,6 +145,8 @@ export interface Run {
     current_phase_proposal: Record<string, unknown> | null;
     verification_review?: VerificationReviewPayload | null;
     final_output_review?: FinalOutputReviewPayload | null;
+    /** True when phases finished successfully and final output review has no verification blocker (FR28). */
+    run_complete?: boolean;
 }
 
 export interface CorrectionProposal {

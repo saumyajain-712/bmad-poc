@@ -16,6 +16,7 @@ type RunSnapshot = Pick<
   | 'current_phase_proposal'
   | 'verification_review'
   | 'final_output_review'
+  | 'run_complete'
 >;
 
 const sortKeysDeep = (value: unknown): unknown => {
@@ -521,6 +522,30 @@ const RunInitiationForm: React.FC = () => {
               <p style={{ marginTop: 0, marginBottom: 0, fontSize: 13 }}>
                 <strong>Required next action:</strong> {latestRun.verification_review.required_next_action}
               </p>
+            </div>
+          )}
+          {latestRun.run_complete
+            && latestRun.final_output_review
+            && latestRun.final_output_review.verification_overview.blocked === false && (
+            <div
+              role="status"
+              aria-live="polite"
+              aria-label="Run complete"
+              style={{
+                marginTop: 10,
+                marginBottom: 8,
+                padding: '10px 12px',
+                border: '2px solid #2e7d32',
+                borderRadius: 6,
+                backgroundColor: '#e8f5e9',
+                color: '#1b5e20',
+              }}
+            >
+              <strong>Run complete</strong>
+              <span style={{ display: 'block', marginTop: 6, fontSize: 13, fontWeight: 400 }}>
+                All BMAD phases finished and verification shows no unresolved blockers. Final output review
+                and local run hints follow below.
+              </span>
             </div>
           )}
           {latestRun.final_output_review && (
