@@ -1,6 +1,6 @@
 # Story 5.3: Review Final Generated Output
 
-Status: review
+Status: done
 
 <!-- Ultimate context engine analysis completed - comprehensive developer guide created -->
 
@@ -37,6 +37,14 @@ so that I can ensure the delivered code meets my expectations (FR27).
   - [x] Backend tests in `backend/tests/test_runs.py` should assert final output review data is present, structured, and deterministic.
   - [x] Frontend tests should verify review presentation renders expected content and respects unresolved verification states.
   - [x] Add/keep tests that prove completion progression remains blocked until blockers are resolved.
+
+### Review Findings
+
+- [x] [Review][Decision] Final output review placement between initiation and observability surfaces is ambiguous — resolved: keep current placement in `RunInitiationForm` for Story 5.3; no additional observability-surface rendering required in this scope.
+- [x] [Review][Patch] Deterministic signature includes run-specific identifier, breaking equivalence across same-input runs — resolved by removing run-unique token contribution from final output review signature in `backend/sql_app/crud.py`.
+- [x] [Review][Patch] Backtick extraction can treat non-path tokens as generated files in final output summary — resolved by filtering to relative path-like tokens before artifact counting in `backend/sql_app/crud.py`.
+- [x] [Review][Defer] Timeline event merge equality can retain stale event metadata not compared by dedupe logic [frontend/src/features/run-initiation/RunInitiationForm.tsx:51] — deferred, pre-existing
+- [x] [Review][Defer] Clarification pending-question normalization can collapse distinct prompts with same normalized key [backend/api/v1/endpoints/runs.py:182] — deferred, pre-existing
 
 ## Dev Notes
 

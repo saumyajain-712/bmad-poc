@@ -2909,6 +2909,106 @@ def test_read_run_exposes_deterministic_final_output_review_payload_for_code_pha
             payload_two = read_two.json()["final_output_review"]
             assert payload_one == payload_two
 
+            second_create = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Build deterministic todo deliverables for demo"},
+            )
+            assert second_create.status_code == 200
+            second_run_id = second_create.json()["run"]["id"]
+
+            db = TestingSessionLocal()
+            try:
+                second_run = db.query(models.Run).filter(models.Run.id == second_run_id).first()
+                assert second_run is not None
+                second_code_proposal = orchestration.build_phase_proposal_payload(
+                    run_id=second_run_id,
+                    phase="code",
+                    phase_output=orchestration.build_code_phase_proposal_content(
+                        "Build deterministic todo deliverables for demo"
+                    ),
+                    context_version=1,
+                    revision=1,
+                )
+                second_code_proposal["verification"] = {
+                    "overall": "failed",
+                    "checks": [
+                        {
+                            "id": "code-todo-api-ui",
+                            "passed": False,
+                            "severity": "critical",
+                            "message": "ui payload mismatch",
+                        }
+                    ],
+                }
+                second_run.proposal_artifacts = {"code": second_code_proposal}
+                second_run.status = "awaiting-approval"
+                second_run.current_phase = "code"
+                second_run.current_phase_index = 3
+                second_run.pending_approved_phase = "code"
+                db.add(second_run)
+                db.commit()
+            finally:
+                db.close()
+
+            second_read = await client.get(f"/api/v1/runs/{second_run_id}")
+            assert second_read.status_code == 200
+            second_payload = second_read.json()["final_output_review"]
+            assert (
+                second_payload["deterministic_signature"]
+                == payload_one["deterministic_signature"]
+            )
+
+            third_create = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Build deterministic todo deliverables for demo"},
+            )
+            assert third_create.status_code == 200
+            third_run_id = third_create.json()["run"]["id"]
+
+            db = TestingSessionLocal()
+            try:
+                third_run = db.query(models.Run).filter(models.Run.id == third_run_id).first()
+                assert third_run is not None
+                third_code_proposal = orchestration.build_phase_proposal_payload(
+                    run_id=third_run_id,
+                    phase="code",
+                    phase_output=(
+                        "Artifacts include `backend/main.py`, `frontend/src/features/todos/TodoApp.tsx`, "
+                        "`POST /todos`, and `toggle-complete`."
+                    ),
+                    context_version=1,
+                    revision=1,
+                )
+                third_code_proposal["verification"] = {
+                    "overall": "failed",
+                    "checks": [
+                        {
+                            "id": "code-todo-api-ui",
+                            "passed": False,
+                            "severity": "critical",
+                            "message": "ui payload mismatch",
+                        }
+                    ],
+                }
+                third_run.proposal_artifacts = {"code": third_code_proposal}
+                third_run.status = "awaiting-approval"
+                third_run.current_phase = "code"
+                third_run.current_phase_index = 3
+                third_run.pending_approved_phase = "code"
+                db.add(third_run)
+                db.commit()
+            finally:
+                db.close()
+
+            third_read = await client.get(f"/api/v1/runs/{third_run_id}")
+            assert third_read.status_code == 200
+            third_payload = third_read.json()["final_output_review"]
+            assert third_payload["artifact_summary"]["backend_files"] == ["backend/main.py"]
+            assert third_payload["artifact_summary"]["frontend_files"] == [
+                "frontend/src/features/todos/TodoApp.tsx"
+            ]
+            assert third_payload["artifact_summary"]["total_files"] == 2
+
     try:
         anyio.run(exercise)
     finally:

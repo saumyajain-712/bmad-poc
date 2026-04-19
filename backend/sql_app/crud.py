@@ -313,7 +313,13 @@ def build_final_output_review_payload(
 
     content = proposal.get("content")
     normalized_content = content if isinstance(content, str) else ""
-    expected_files = sorted(set(re.findall(r"`([^`]+)`", normalized_content)))
+    expected_files = sorted(
+        {
+            token.strip()
+            for token in re.findall(r"`([^`]+)`", normalized_content)
+            if _looks_like_relative_path(token)
+        }
+    )
     backend_files = [path for path in expected_files if path.startswith("backend/")]
     frontend_files = [path for path in expected_files if path.startswith("frontend/")]
 
@@ -338,9 +344,6 @@ def build_final_output_review_payload(
     )
     revision = proposal.get("revision")
     normalized_revision = revision if isinstance(revision, int) else None
-    generated_at = proposal.get("generated_at")
-    generated_token = generated_at if isinstance(generated_at, str) else "unknown"
-
     return {
         "phase": "code",
         "proposal_revision": normalized_revision,
@@ -358,10 +361,18 @@ def build_final_output_review_payload(
             "blocker": unresolved_blocker if isinstance(unresolved_blocker, dict) else None,
         },
         "deterministic_signature": (
-            f"code|rev-{normalized_revision}|gen-{generated_token}|"
+            f"code|rev-{normalized_revision}|overall-{normalized_overall}|"
             f"files-{len(expected_files)}|blocked-{isinstance(unresolved_blocker, dict)}"
         ),
     }
+
+
+def _looks_like_relative_path(token: str) -> bool:
+    candidate = token.strip()
+    # Keep only path-like code artifacts (e.g., backend/main.py, frontend/src/App.tsx).
+    return bool(
+        re.fullmatch(r"[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)+", candidate)
+    )
 
 
 def _append_blocked_transition_event(

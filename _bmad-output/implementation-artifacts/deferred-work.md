@@ -62,3 +62,8 @@
 
 - Verification gate currently blocks only failed checks with severity `critical`/`error`; failed checks with missing/non-blocking severity may not block progression (`backend/sql_app/crud.py`) — deferred as pre-existing to current change set.
 - Marker-based JSON fence extraction/replacement is fragile to malformed or unexpected fenced-block structure (`backend/services/verification.py`) — deferred as pre-existing parser-hardening work.
+
+## Deferred from: code review of 5-3-review-final-generated-output.md (2026-04-19)
+
+- Timeline event merge equality can retain stale event metadata not compared by dedupe logic (`frontend/src/features/run-initiation/RunInitiationForm.tsx`) — deferred as pre-existing timeline consistency hardening.
+- Clarification pending-question normalization can collapse distinct prompts with the same normalized key (`backend/api/v1/endpoints/runs.py`) — deferred as pre-existing robustness gap not introduced by this commit range.
