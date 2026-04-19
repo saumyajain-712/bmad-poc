@@ -756,6 +756,85 @@ def modify_run_phase_proposal(
 
 
 @router.post(
+    "/runs/{run_id}/phases/{phase}/corrections/apply",
+    response_model=schemas.PhaseCorrectionApplyResponse,
+)
+def apply_run_phase_correction(
+    run_id: int,
+    phase: str,
+    payload: schemas.PhaseCorrectionApplyRequest,
+    db: Session = Depends(get_db),
+):
+    db_run = crud.get_run(db, run_id=run_id)
+    if db_run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    normalized_phase = phase.strip().lower()
+    if not orchestration.is_valid_phase(normalized_phase):
+        raise HTTPException(
+            status_code=400,
+            detail={"error_code": "unsupported_phase", "message": "Unsupported phase name."},
+        )
+
+    current_phase_index = (
+        db_run.current_phase_index if db_run.current_phase_index is not None else -1
+    )
+    updated_run, corrected_proposal, outcome = crud.apply_phase_correction(
+        db=db,
+        db_run=db_run,
+        phase=normalized_phase,
+        actor=payload.actor.strip() or "session:api",
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        expected_current_phase_index=current_phase_index,
+        expected_revision=payload.proposal_revision,
+    )
+    if outcome == "phase_transition_conflict":
+        raise HTTPException(status_code=409, detail={"error_code": outcome})
+    if outcome in {
+        "phase_sequence_complete",
+        "phase_skip_not_allowed",
+        "phase_not_awaiting_approval",
+        "phase_proposal_missing",
+        "phase_revision_invalid",
+        "stale_proposal_revision",
+        "correction_proposal_missing",
+        "unsupported_correction_phase",
+        "unsupported_correction_source_check",
+        "invalid_proposal_content",
+        "missing_ui_marker_block",
+        "missing_ui_todo_create",
+        "invalid_ui_provided_fields",
+    }:
+        raise HTTPException(status_code=409, detail={"error_code": outcome})
+    if outcome != "correction-applied" or not isinstance(corrected_proposal, dict):
+        raise HTTPException(status_code=500, detail={"error_code": "unexpected_correction_outcome"})
+
+    verification_artifact = corrected_proposal.get("verification")
+    correction_applied = corrected_proposal.get("correction_applied")
+    if not isinstance(verification_artifact, dict) or not isinstance(correction_applied, dict):
+        raise HTTPException(status_code=500, detail={"error_code": "invalid_corrected_proposal"})
+
+    verification_overall = verification_artifact.get("overall")
+    source_check_id = correction_applied.get("source_check_id")
+    proposal_revision = corrected_proposal.get("revision")
+    if (
+        not isinstance(verification_overall, str)
+        or not isinstance(source_check_id, str)
+        or not isinstance(proposal_revision, int)
+    ):
+        raise HTTPException(status_code=500, detail={"error_code": "invalid_corrected_proposal"})
+
+    return {
+        "run_id": updated_run.id,
+        "phase": normalized_phase,
+        "status": "correction-applied",
+        "proposal_revision": proposal_revision,
+        "verification_overall": verification_overall,
+        "source_check_id": source_check_id,
+    }
+
+
+@router.post(
     "/runs/{run_id}/phases/advance",
     response_model=schemas.PhaseAdvanceResponse,
 )

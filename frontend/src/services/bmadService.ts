@@ -36,6 +36,7 @@ export interface RunTimelineEvent {
     revision?: number;
     source_check_id?: string;
     compact_summary?: string;
+    status?: string;
 
     /** `resume-failed` / `resume-completed` (orchestration resume) */
     decision_type?: string;
@@ -68,6 +69,20 @@ export interface CorrectionProposal {
     root_cause_summary: string;
     recommended_change_target: string;
     patch_guidance: string;
+}
+
+export interface PhaseCorrectionApplyRequest {
+    proposal_revision: number;
+    actor?: string;
+}
+
+export interface PhaseCorrectionApplyResponse {
+    run_id: number;
+    phase: string;
+    status: string;
+    proposal_revision: number;
+    verification_overall: string;
+    source_check_id: string;
 }
 
 interface CompletenessValidationResult {
@@ -129,4 +144,24 @@ export async function fetchRun(runId: number): Promise<Run> {
     }
 
     return response.json() as Promise<Run>;
+}
+
+export async function applyPhaseCorrection(
+    runId: number,
+    phase: string,
+    payload: PhaseCorrectionApplyRequest
+): Promise<PhaseCorrectionApplyResponse> {
+    const response = await fetch(`/api/v1/runs/${runId}/phases/${phase}/corrections/apply`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return response.json() as Promise<PhaseCorrectionApplyResponse>;
 }

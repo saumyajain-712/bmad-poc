@@ -142,6 +142,20 @@ class PhaseModifyResponse(BaseModel):
     previous_revision: int
 
 
+class PhaseCorrectionApplyRequest(BaseModel):
+    actor: str = Field(default="session:api", min_length=1, max_length=128)
+    proposal_revision: int = Field(strict=True, ge=1)
+
+
+class PhaseCorrectionApplyResponse(BaseModel):
+    run_id: int
+    phase: str
+    status: str
+    proposal_revision: int
+    verification_overall: str
+    source_check_id: str
+
+
 class RunResumeRequest(BaseModel):
     decision_type: str = Field(min_length=1, max_length=32)
     source_checkpoint: str | None = Field(default=None, max_length=128)

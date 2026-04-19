@@ -36,6 +36,19 @@ export function getNonToolDetailRows(event: RunTimelineEvent): DetailRow[] {
       rows.push({ label: 'Summary', value: event.compact_summary });
     }
   }
+  if (event.event_type === 'correction_applied') {
+    if (event.source_check_id) {
+      rows.push({ label: 'Source check id', value: event.source_check_id });
+    }
+    if (event.revision !== undefined) {
+      rows.push({ label: 'Revision', value: String(event.revision) });
+    }
+    if (event.summary) {
+      rows.push({ label: 'Overall', value: String(event.summary.overall ?? '—') });
+      rows.push({ label: 'Pass count', value: String(event.summary.pass_count ?? '—') });
+      rows.push({ label: 'Fail count', value: String(event.summary.fail_count ?? '—') });
+    }
+  }
 
   if (event.event_type === 'proposal_generation_failed') {
     if (event.step) rows.push({ label: 'Step', value: event.step });

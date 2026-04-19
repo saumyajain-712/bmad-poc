@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { createRun, submitRunClarifications } from '../../services/bmadService';
+import { applyPhaseCorrection, createRun, fetchRun, submitRunClarifications } from '../../services/bmadService';
 import type { Run, RunTimelineEvent } from '../../services/bmadService';
 import RunTimeline from '../run-observability/RunTimeline';
 
@@ -111,6 +111,7 @@ const RunInitiationForm: React.FC = () => {
   const [runId, setRunId] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [latestRun, setLatestRun] = useState<RunSnapshot | null>(null);
+  const [isApplyingCorrection, setIsApplyingCorrection] = useState<boolean>(false);
 
   const normalizeQuestions = (questions: string[]): string[] => (
     [...questions].sort((a, b) => a.localeCompare(b))
@@ -233,6 +234,35 @@ const RunInitiationForm: React.FC = () => {
       console.error(err);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleApplyCorrection = async () => {
+    if (isApplyingCorrection || runId === null || !latestRun?.current_phase_proposal) {
+      return;
+    }
+    const proposal = latestRun.current_phase_proposal as Record<string, unknown>;
+    const revision = proposal.revision;
+    const phase = String(proposal.phase ?? '');
+    if (typeof revision !== 'number' || !phase) {
+      setError('Correction apply is unavailable for the current proposal.');
+      return;
+    }
+    if (!window.confirm('Apply proposed correction and re-run verification?')) {
+      return;
+    }
+    try {
+      setIsApplyingCorrection(true);
+      setError('');
+      await applyPhaseCorrection(runId, phase, { proposal_revision: revision });
+      const refreshedRun = await fetchRun(runId);
+      setLatestRun((previous) => mergeRunSnapshot(previous, refreshedRun));
+      setMessage(`Correction applied for ${phase} revision ${revision} and verification re-ran.`);
+    } catch (err) {
+      setError('Failed to apply correction. Please try again.');
+      console.error(err);
+    } finally {
+      setIsApplyingCorrection(false);
     }
   };
 
@@ -395,6 +425,23 @@ const RunInitiationForm: React.FC = () => {
                       )}
                     </li>
                   </ul>
+                  <button
+                    type="button"
+                    onClick={handleApplyCorrection}
+                    disabled={isSubmitting || isApplyingCorrection}
+                    style={{
+                      marginTop: 8,
+                      padding: '8px 10px',
+                      backgroundColor: '#8a6d3b',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: isApplyingCorrection ? 'not-allowed' : 'pointer',
+                      opacity: isApplyingCorrection ? 0.7 : 1,
+                    }}
+                  >
+                    {isApplyingCorrection ? 'Applying correction...' : 'Apply correction'}
+                  </button>
                 </details>
               )}
             </div>

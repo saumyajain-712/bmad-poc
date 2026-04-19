@@ -359,3 +359,70 @@ def build_correction_proposal(
         "recommended_change_target": "frontend todo-create request payload",
         "patch_guidance": "Include completed as a boolean in the UI todo create payload and keep fields aligned with the API required contract.",
     }
+
+
+def apply_correction_proposal(
+    *,
+    phase: str,
+    proposal_payload: dict[str, Any],
+    correction_proposal: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """
+    Apply a deterministic correction to proposal payload content.
+
+    Story 4.4 scope:
+      - supports only code-phase `code-todo-api-ui`
+      - idempotent for the same revision/content
+      - preserves marker blocks used by verification parser
+    """
+    if phase != "code":
+        raise ValueError("unsupported_correction_phase")
+    source_check_id = correction_proposal.get("source_check_id")
+    if source_check_id != "code-todo-api-ui":
+        raise ValueError("unsupported_correction_source_check")
+    content = proposal_payload.get("content")
+    if not isinstance(content, str):
+        raise ValueError("invalid_proposal_content")
+
+    ui_data = _extract_json_fence_after_marker(content, orchestration.CODE_PHASE_UI_TODO_MARKER)
+    if not isinstance(ui_data, dict):
+        raise ValueError("missing_ui_marker_block")
+    ui_todo_create = ui_data.get("todo_create")
+    if not isinstance(ui_todo_create, dict):
+        raise ValueError("missing_ui_todo_create")
+    provided_fields = ui_todo_create.get("provided")
+    if not isinstance(provided_fields, list) or not all(
+        isinstance(item, str) for item in provided_fields
+    ):
+        raise ValueError("invalid_ui_provided_fields")
+
+    already_has_completed = "completed" in provided_fields
+    if not already_has_completed:
+        ui_todo_create["provided"] = [*provided_fields, "completed"]
+        ui_marker = orchestration.CODE_PHASE_UI_TODO_MARKER
+        marker_idx = content.find(ui_marker)
+        if marker_idx < 0:
+            raise ValueError("missing_ui_marker_block")
+        before_ui = content[:marker_idx]
+        replacement = (
+            f"{ui_marker}\n```json\n"
+            f"{json.dumps(ui_data, indent=2, sort_keys=True)}\n"
+            "```"
+        )
+        content = f"{before_ui}{replacement}"
+
+    updated_payload = dict(proposal_payload)
+    updated_payload["content"] = content
+    updated_payload.pop("correction_proposal", None)
+
+    apply_metadata = {
+        "source_check_id": source_check_id,
+        "source_revision": (
+            proposal_payload.get("revision")
+            if isinstance(proposal_payload.get("revision"), int)
+            else None
+        ),
+        "applied": not already_has_completed,
+        "idempotent_replay": already_has_completed,
+    }
+    return updated_payload, apply_metadata

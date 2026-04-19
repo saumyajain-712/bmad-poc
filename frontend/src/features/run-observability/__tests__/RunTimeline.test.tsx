@@ -431,6 +431,28 @@ describe('RunTimeline', () => {
     expect(rows[1]).toHaveTextContent('advance not allowed');
   });
 
+  it('renders correction_applied row with verification summary and governance variant', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: 'correction_applied',
+            phase: 'code',
+            revision: 1,
+            source_check_id: 'code-todo-api-ui',
+            summary: { pass_count: 8, fail_count: 0, overall: 'passed' },
+            timestamp: '2026-04-17T16:00:15Z',
+          },
+        ]}
+      />
+    );
+
+    const row = screen.getByRole('listitem');
+    expect(row).toHaveAttribute('data-timeline-variant', 'phase-governance');
+    expect(row).toHaveTextContent('correction applied');
+    expect(row).toHaveTextContent('verification passed');
+  });
+
   it('adds a phase-scope boundary cue when working phase changes between adjacent rows', () => {
     render(
       <RunTimeline

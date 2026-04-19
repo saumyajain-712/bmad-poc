@@ -912,6 +912,98 @@ def test_code_phase_modify_regeneration_updates_single_correction_event_per_revi
         app.dependency_overrides.clear()
 
 
+def test_code_phase_apply_correction_reverifies_and_persists_metadata(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            run_id = create_response.json()["run"]["id"]
+            for phase in ("prd", "architecture", "stories"):
+                await client.post(f"/api/v1/runs/{run_id}/phases/{phase}/start")
+                await client.post(f"/api/v1/runs/{run_id}/phases/{phase}/approve")
+
+            await client.post(f"/api/v1/runs/{run_id}/phases/code/start")
+            before = (await client.get(f"/api/v1/runs/{run_id}")).json()
+            assert before["proposal_artifacts"]["code"]["verification"]["overall"] == "failed"
+
+            apply_response = await client.post(
+                f"/api/v1/runs/{run_id}/phases/code/corrections/apply",
+                json={"proposal_revision": 1, "actor": "session:test"},
+            )
+            assert apply_response.status_code == 200
+            body = apply_response.json()
+            assert body["status"] == "correction-applied"
+            assert body["verification_overall"] == "passed"
+            assert body["source_check_id"] == "code-todo-api-ui"
+
+            after = (await client.get(f"/api/v1/runs/{run_id}")).json()
+            code = after["proposal_artifacts"]["code"]
+            assert code["verification"]["overall"] == "passed"
+            assert "correction_proposal" not in code
+            assert code["correction_applied"]["source_check_id"] == "code-todo-api-ui"
+            events = after["context_events"]
+            assert any(e.get("event_type") == "correction_applied" for e in events)
+            assert any(
+                e.get("event_type") == "verification_checks_completed"
+                and e.get("phase") == "code"
+                and e.get("revision") == 1
+                and e.get("summary", {}).get("overall") == "passed"
+                for e in events
+            )
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_apply_correction_rejects_stale_revision_and_missing_correction(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            run_id = create_response.json()["run"]["id"]
+
+            await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+            missing = await client.post(
+                f"/api/v1/runs/{run_id}/phases/prd/corrections/apply",
+                json={"proposal_revision": 1},
+            )
+            assert missing.status_code == 409
+            assert missing.json()["detail"]["error_code"] == "correction_proposal_missing"
+
+            for phase in ("prd", "architecture", "stories"):
+                if phase != "prd":
+                    await client.post(f"/api/v1/runs/{run_id}/phases/{phase}/start")
+                await client.post(f"/api/v1/runs/{run_id}/phases/{phase}/approve")
+            await client.post(f"/api/v1/runs/{run_id}/phases/code/start")
+            stale = await client.post(
+                f"/api/v1/runs/{run_id}/phases/code/corrections/apply",
+                json={"proposal_revision": 2},
+            )
+            assert stale.status_code == 409
+            assert stale.json()["detail"]["error_code"] == "stale_proposal_revision"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_correction_proposal_detects_targeted_mismatch_even_if_not_first_failed_check():
     proposal_payload = {"revision": 3}
     verification_artifact = {

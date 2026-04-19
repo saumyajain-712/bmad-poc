@@ -1037,6 +1037,124 @@ def modify_phase_proposal(
     return locked_run, regenerated_proposal, "regenerated"
 
 
+def apply_phase_correction(
+    db: Session,
+    db_run: models.Run,
+    *,
+    phase: str,
+    actor: str,
+    timestamp: str,
+    expected_current_phase_index: int,
+    expected_revision: int,
+):
+    locked_run = (
+        db.query(models.Run)
+        .filter(models.Run.id == db_run.id)
+        .with_for_update()
+        .first()
+    )
+    if locked_run is None:
+        return db_run, None, "phase_transition_conflict"
+
+    current_phase_index = (
+        locked_run.current_phase_index if locked_run.current_phase_index is not None else -1
+    )
+    if current_phase_index != expected_current_phase_index:
+        return locked_run, None, "phase_transition_conflict"
+
+    expected_phase = orchestration.get_next_phase(current_phase_index)
+    if expected_phase is None:
+        return locked_run, None, "phase_sequence_complete"
+    if phase != expected_phase:
+        return locked_run, None, "phase_skip_not_allowed"
+
+    phase_statuses = _safe_phase_statuses(locked_run.phase_statuses)
+    if (
+        locked_run.status not in {"initiated", "in-progress", "awaiting-approval"}
+        or phase_statuses.get(phase) != "awaiting-approval"
+    ):
+        return locked_run, None, "phase_not_awaiting_approval"
+
+    proposal_artifacts = (
+        dict(locked_run.proposal_artifacts)
+        if isinstance(locked_run.proposal_artifacts, dict)
+        else {}
+    )
+    proposal = proposal_artifacts.get(phase)
+    if not isinstance(proposal, dict):
+        return locked_run, None, "phase_proposal_missing"
+
+    current_revision = proposal.get("revision")
+    if not isinstance(current_revision, int):
+        return locked_run, None, "phase_revision_invalid"
+    if current_revision != expected_revision:
+        return locked_run, None, "stale_proposal_revision"
+
+    correction_proposal = proposal.get("correction_proposal")
+    if not isinstance(correction_proposal, dict):
+        return locked_run, None, "correction_proposal_missing"
+
+    try:
+        corrected_payload, apply_meta = verification.apply_correction_proposal(
+            phase=phase,
+            proposal_payload=proposal,
+            correction_proposal=correction_proposal,
+        )
+    except ValueError as exc:
+        return locked_run, None, str(exc)
+
+    resolved_ctx = (
+        locked_run.resolved_input_context
+        if isinstance(locked_run.resolved_input_context, str)
+        else None
+    )
+    corrected_payload["verification"] = verification.run_phase_verification(
+        phase=phase,
+        proposal_payload=corrected_payload,
+        resolved_context_snapshot=resolved_ctx,
+    )
+    corrected_payload["correction_applied"] = {
+        "applied_at": timestamp,
+        "applied_by": actor,
+        "source_check_id": correction_proposal.get("source_check_id"),
+        "revision": current_revision,
+        "idempotent_replay": bool(apply_meta.get("idempotent_replay")),
+    }
+
+    proposal_artifacts[phase] = corrected_payload
+    locked_run.proposal_artifacts = proposal_artifacts
+
+    events = list(locked_run.context_events or [])
+    ver_summary = verification.verification_event_summary(
+        corrected_payload.get("verification") or {}
+    )
+    events.append(
+        {
+            "event_type": "correction_applied",
+            "run_id": locked_run.id,
+            "phase": phase,
+            "revision": current_revision,
+            "source_check_id": correction_proposal.get("source_check_id"),
+            "summary": ver_summary,
+            "timestamp": timestamp,
+        }
+    )
+    events.append(
+        {
+            "event_type": "verification_checks_completed",
+            "phase": phase,
+            "revision": current_revision,
+            "summary": ver_summary,
+        }
+    )
+    locked_run.context_events = events
+
+    db.add(locked_run)
+    db.commit()
+    db.refresh(locked_run)
+    return locked_run, corrected_payload, "correction-applied"
+
+
 def _latest_resume_event(
     events: list[object],
     event_type: str,
