@@ -49,6 +49,27 @@ export function getNonToolDetailRows(event: RunTimelineEvent): DetailRow[] {
       rows.push({ label: 'Fail count', value: String(event.summary.fail_count ?? '—') });
     }
   }
+  if (event.event_type === 'phase-transition-blocked' || event.event_type === 'verification_gate_blocked') {
+    if (event.attempted_action) {
+      rows.push({ label: 'Attempted action', value: event.attempted_action });
+    }
+    if (event.proposal_revision !== undefined) {
+      rows.push({ label: 'Proposal revision', value: String(event.proposal_revision) });
+    }
+    if (event.blocker?.verification_overall) {
+      rows.push({ label: 'Verification overall', value: event.blocker.verification_overall });
+    }
+    if (event.blocker?.unresolved_critical_count !== undefined) {
+      rows.push({
+        label: 'Unresolved critical checks',
+        value: String(event.blocker.unresolved_critical_count),
+        emphasis: 'error',
+      });
+    }
+    if (event.blocker?.next_action) {
+      rows.push({ label: 'Required next action', value: event.blocker.next_action });
+    }
+  }
 
   if (event.event_type === 'proposal_generation_failed') {
     if (event.step) rows.push({ label: 'Step', value: event.step });

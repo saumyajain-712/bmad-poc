@@ -431,6 +431,37 @@ describe('RunTimeline', () => {
     expect(rows[1]).toHaveTextContent('advance not allowed');
   });
 
+  it('renders verification gate blocked summary and detail rows', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: 'verification_gate_blocked',
+            phase: 'code',
+            attempted_action: 'advance',
+            proposal_revision: 3,
+            blocker: {
+              verification_overall: 'failed',
+              unresolved_critical_count: 2,
+              next_action: 'Apply correction and re-run verification.',
+            },
+            timestamp: '2026-04-17T16:00:14Z',
+          },
+        ]}
+      />
+    );
+
+    const row = screen.getByRole('listitem');
+    expect(row).toHaveAttribute('data-timeline-variant', 'phase-governance');
+    expect(row).toHaveTextContent('Verification gate blocked · Code · unresolved critical checks 2');
+
+    fireEvent.click(screen.getByRole('button', { name: /Details for/ }));
+    expect(screen.getByText('Attempted action')).toBeInTheDocument();
+    expect(screen.getByText('advance')).toBeInTheDocument();
+    expect(screen.getByText('Unresolved critical checks')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
+  });
+
   it('renders correction_applied row with verification summary and governance variant', () => {
     render(
       <RunTimeline

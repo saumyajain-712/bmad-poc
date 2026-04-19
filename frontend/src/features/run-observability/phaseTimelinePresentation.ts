@@ -66,6 +66,7 @@ const PHASE_GOVERNANCE_TYPES = new Set([
   'phase-approved',
   'phase-awaiting-transition',
   'phase-transition-blocked',
+  'verification_gate_blocked',
   'proposal_generated',
   'phase-context-consumed',
   VERIFICATION_CHECKS_COMPLETED_EVENT_TYPE,
@@ -219,7 +220,20 @@ export function formatEventDetailForTimeline(event: RunTimelineEvent): string {
 
   if (event.event_type === 'phase-transition-blocked') {
     const phaseLabel = getPhaseDisplayName(event.phase);
+    const unresolvedCount = event.blocker?.unresolved_critical_count;
+    if (typeof unresolvedCount === 'number') {
+      return `Blocked · ${phaseLabel} · unresolved critical checks ${unresolvedCount}`;
+    }
     return `Blocked · ${phaseLabel}${event.reason ? ` · ${event.reason}` : ''}`;
+  }
+
+  if (event.event_type === 'verification_gate_blocked') {
+    const phaseLabel = getPhaseDisplayName(event.phase);
+    const unresolvedCount = event.blocker?.unresolved_critical_count;
+    if (typeof unresolvedCount === 'number') {
+      return `Verification gate blocked · ${phaseLabel} · unresolved critical checks ${unresolvedCount}`;
+    }
+    return `Verification gate blocked · ${phaseLabel}`;
   }
 
   if (event.previous_phase || event.next_phase) {

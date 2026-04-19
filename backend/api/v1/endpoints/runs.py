@@ -110,11 +110,11 @@ def read_run(run_id: int, db: Session = Depends(get_db)):
         proposal_phase = expected_phase
     if proposal_phase is None:
         proposal_phase = current_phase or expected_phase
-    gate_allowed, gate_reason, _ = crud.evaluate_transition_decision_gate(
+    gate_allowed, gate_reason, _, blocker = crud.evaluate_transition_decision_gate(
         db_run,
         phase=proposal_phase or "",
         attempted_action="advance",
-    ) if proposal_phase else (True, None, None)
+    ) if proposal_phase else (True, None, None, None)
     db_run.awaiting_user_decision = (
         db_run.status == "awaiting-approval"
         and proposal_phase is not None
@@ -123,6 +123,8 @@ def read_run(run_id: int, db: Session = Depends(get_db)):
     db_run.blocked_reason = (
         "explicit user decision required"
         if db_run.awaiting_user_decision
+        else "unresolved verification blocker"
+        if gate_reason == "unresolved_verification_blocker"
         else None
     )
     db_run.can_advance_phase = bool(gate_allowed and proposal_phase is not None)
@@ -860,7 +862,7 @@ def advance_run_phase(
         )
 
     previous_phase = db_run.current_phase
-    updated_run, gate_reason, proposal_revision = crud.apply_phase_transition_with_gate(
+    updated_run, gate_reason, proposal_revision, blocker = crud.apply_phase_transition_with_gate(
         db=db,
         db_run=db_run,
         attempted_phase=expected_phase,
@@ -876,10 +878,13 @@ def advance_run_phase(
             attempted_action="advance",
             reason=gate_reason or "unknown",
             proposal_revision=proposal_revision,
+            blocker=blocker,
         )
         blocked_message = (
             "Phase advancement is blocked: explicit user decision required."
             if gate_reason == "explicit_user_decision_required"
+            else "Phase advancement is blocked due to unresolved verification mismatches."
+            if gate_reason == "unresolved_verification_blocker"
             else "Phase advancement is blocked due to invalid phase state."
         )
         raise HTTPException(
@@ -891,6 +896,7 @@ def advance_run_phase(
                 "reason": gate_reason,
                 "blocked": True,
                 "awaiting_user_decision": gate_reason == "explicit_user_decision_required",
+                "blocker": blocker,
             },
         )
     if updated_run is None:
@@ -956,6 +962,7 @@ def resume_run_from_current_state(
         "run_not_active",
         "phase_not_awaiting_approval",
         "phase_not_approved",
+        "unresolved_verification_blocker",
         "clarification_context_unresolved",
         "invalid_phase_status_transition",
     }:

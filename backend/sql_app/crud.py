@@ -117,6 +117,58 @@ def _extract_latest_approval_event(
     return None
 
 
+def _build_verification_blocker(
+    proposal: dict,
+) -> dict[str, object] | None:
+    verification_artifact = proposal.get("verification")
+    if not isinstance(verification_artifact, dict):
+        return None
+
+    overall = verification_artifact.get("overall")
+    if not isinstance(overall, str):
+        return None
+
+    checks = (
+        verification_artifact.get("checks")
+        if isinstance(verification_artifact.get("checks"), list)
+        else []
+    )
+    unresolved_critical_checks: list[dict[str, str]] = []
+    for raw_check in checks:
+        if not isinstance(raw_check, dict):
+            continue
+        passed = raw_check.get("passed")
+        severity = raw_check.get("severity")
+        check_id = raw_check.get("id")
+        if passed is not False:
+            continue
+        if not isinstance(severity, str):
+            continue
+        normalized_severity = severity.strip().lower()
+        if normalized_severity not in {"critical", "error"}:
+            continue
+        unresolved_critical_checks.append(
+            {
+                "id": check_id if isinstance(check_id, str) else "unknown-check",
+                "severity": normalized_severity,
+            }
+        )
+
+    if overall == "passed":
+        return None
+    if not unresolved_critical_checks and overall != "failed":
+        return None
+
+    return {
+        "error_code": "unresolved_verification_blocker",
+        "message": "Progression blocked until unresolved critical verification mismatches are fixed.",
+        "verification_overall": overall,
+        "unresolved_critical_count": len(unresolved_critical_checks),
+        "unresolved_critical_checks": unresolved_critical_checks,
+        "next_action": "Apply or implement corrective changes and re-run verification.",
+    }
+
+
 def _append_blocked_transition_event(
     events: list[dict],
     *,
@@ -143,7 +195,7 @@ def evaluate_transition_decision_gate(
     *,
     phase: str,
     attempted_action: str,
-) -> tuple[bool, str | None, int | None]:
+) -> tuple[bool, str | None, int | None, dict[str, object] | None]:
     phase_statuses = _safe_phase_statuses(db_run.phase_statuses)
     proposal_artifacts = (
         db_run.proposal_artifacts
@@ -152,21 +204,30 @@ def evaluate_transition_decision_gate(
     )
     proposal = proposal_artifacts.get(phase)
     if not isinstance(proposal, dict):
-        return False, "phase_proposal_missing", None
+        return False, "phase_proposal_missing", None, None
     proposal_revision = proposal.get("revision")
     normalized_revision = proposal_revision if isinstance(proposal_revision, int) else None
     if normalized_revision is None:
-        return False, "phase_revision_invalid", None
+        return False, "phase_revision_invalid", None, None
+
+    verification_blocker = _build_verification_blocker(proposal)
+    if verification_blocker is not None:
+        return (
+            False,
+            "unresolved_verification_blocker",
+            normalized_revision,
+            verification_blocker,
+        )
 
     phase_state = phase_statuses.get(phase)
     if db_run.status not in {"awaiting-approval", "initiated", "in-progress"}:
-        return False, "run_not_active", normalized_revision
+        return False, "run_not_active", normalized_revision, None
     if attempted_action == "advance" and phase_state != "approved":
         if phase_state == "awaiting-approval":
-            return False, "explicit_user_decision_required", normalized_revision
-        return False, "phase_not_approved", normalized_revision
+            return False, "explicit_user_decision_required", normalized_revision, None
+        return False, "phase_not_approved", normalized_revision, None
     if attempted_action != "advance" and phase_state != "awaiting-approval":
-        return False, "phase_not_awaiting_approval", normalized_revision
+        return False, "phase_not_awaiting_approval", normalized_revision, None
 
     approval_event = _extract_latest_approval_event(
         events=list(db_run.context_events or []),
@@ -174,13 +235,13 @@ def evaluate_transition_decision_gate(
         revision=normalized_revision,
     )
     if approval_event is None:
-        return False, "explicit_user_decision_required", normalized_revision
+        return False, "explicit_user_decision_required", normalized_revision, None
 
     if attempted_action == "advance":
         if db_run.pending_approved_phase != phase:
-            return False, "phase_not_approved", normalized_revision
+            return False, "phase_not_approved", normalized_revision, None
 
-    return True, None, normalized_revision
+    return True, None, normalized_revision, None
 
 
 def _is_duplicate_blocked_event(
@@ -213,6 +274,7 @@ def record_blocked_transition_attempt(
     attempted_action: str,
     reason: str,
     proposal_revision: int | None,
+    blocker: dict[str, object] | None = None,
 ):
     locked_run = (
         db.query(models.Run)
@@ -239,6 +301,27 @@ def record_blocked_transition_attempt(
         reason=reason,
         proposal_revision=proposal_revision,
     )
+    if reason == "unresolved_verification_blocker":
+        latest = events[-1] if events else {}
+        if not (
+            isinstance(latest, dict)
+            and latest.get("event_type") == "verification_gate_blocked"
+            and latest.get("phase") == phase
+            and latest.get("attempted_action") == attempted_action
+            and latest.get("proposal_revision") == proposal_revision
+            and latest.get("blocker") == blocker
+        ):
+            events.append(
+                {
+                    "event_type": "verification_gate_blocked",
+                    "run_id": locked_run.id,
+                    "phase": phase,
+                    "attempted_action": attempted_action,
+                    "proposal_revision": proposal_revision,
+                    "reason": reason,
+                    "blocker": blocker or {},
+                }
+            )
     locked_run.context_events = events
     db.add(locked_run)
     db.commit()
@@ -254,7 +337,7 @@ def apply_phase_transition_with_gate(
     previous_phase: str | None,
     timestamp: str,
     expected_current_phase_index: int,
-) -> tuple[models.Run | None, str | None, int | None]:
+) -> tuple[models.Run | None, str | None, int | None, dict[str, object] | None]:
     locked_run = (
         db.query(models.Run)
         .filter(models.Run.id == db_run.id)
@@ -262,21 +345,21 @@ def apply_phase_transition_with_gate(
         .first()
     )
     if locked_run is None:
-        return None, "phase_transition_conflict", None
+        return None, "phase_transition_conflict", None, None
 
     current_phase_index = (
         locked_run.current_phase_index if locked_run.current_phase_index is not None else -1
     )
     if current_phase_index != expected_current_phase_index:
-        return locked_run, "phase_transition_conflict", None
+        return locked_run, "phase_transition_conflict", None, None
 
-    gate_allowed, gate_reason, proposal_revision = evaluate_transition_decision_gate(
+    gate_allowed, gate_reason, proposal_revision, blocker = evaluate_transition_decision_gate(
         locked_run,
         phase=attempted_phase,
         attempted_action="advance",
     )
     if not gate_allowed:
-        return locked_run, gate_reason, proposal_revision
+        return locked_run, gate_reason, proposal_revision, blocker
 
     phase_statuses = _safe_phase_statuses(locked_run.phase_statuses)
     events = list(locked_run.context_events or [])
@@ -301,7 +384,7 @@ def apply_phase_transition_with_gate(
                 timestamp=timestamp,
             )
     except ValueError:
-        return locked_run, "invalid_phase_status_transition", proposal_revision
+        return locked_run, "invalid_phase_status_transition", proposal_revision, None
     locked_run.phase_statuses = phase_statuses
     locked_run.current_phase = attempted_phase
     locked_run.current_phase_index = current_phase_index + 1
@@ -324,7 +407,7 @@ def apply_phase_transition_with_gate(
     db.add(locked_run)
     db.commit()
     db.refresh(locked_run)
-    return locked_run, None, proposal_revision
+    return locked_run, None, proposal_revision, None
 
 
 def _summarize_feedback(feedback: str, limit: int = 160) -> str:
@@ -1369,6 +1452,11 @@ def resume_run_orchestration(
         else:
             no_op = True
     else:  # approve
+        proposal = (
+            locked_run.proposal_artifacts.get(expected_phase)
+            if expected_phase is not None and isinstance(locked_run.proposal_artifacts, dict)
+            else None
+        )
         if expected_phase is None:
             conflict_reason = "phase_sequence_complete"
         elif (
@@ -1376,6 +1464,8 @@ def resume_run_orchestration(
             and locked_run.pending_approved_phase != expected_phase
         ):
             conflict_reason = "phase_not_approved"
+        elif isinstance(proposal, dict) and _build_verification_blocker(proposal) is not None:
+            conflict_reason = "unresolved_verification_blocker"
         elif locked_run.current_phase == expected_phase:
             no_op = True
         else:

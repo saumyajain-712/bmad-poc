@@ -37,6 +37,19 @@ export interface RunTimelineEvent {
     source_check_id?: string;
     compact_summary?: string;
     status?: string;
+    attempted_action?: string;
+    proposal_revision?: number;
+    blocker?: {
+        error_code?: string;
+        message?: string;
+        verification_overall?: string;
+        unresolved_critical_count?: number;
+        unresolved_critical_checks?: Array<{
+            id?: string;
+            severity?: string;
+        }>;
+        next_action?: string;
+    };
 
     /** `resume-failed` / `resume-completed` (orchestration resume) */
     decision_type?: string;

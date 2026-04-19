@@ -1612,6 +1612,159 @@ def test_phase_advancement_rejects_invalid_proposal_revision(monkeypatch):
         app.dependency_overrides.clear()
 
 
+def test_phase_advancement_blocks_on_unresolved_verification_without_state_mutation(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+            start_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+            assert start_response.status_code == 200
+
+            db = TestingSessionLocal()
+            try:
+                db_run = db.query(models.Run).filter(models.Run.id == run_id).first()
+                proposal_artifacts = (
+                    dict(db_run.proposal_artifacts)
+                    if isinstance(db_run.proposal_artifacts, dict)
+                    else {}
+                )
+                prd_proposal = dict(proposal_artifacts.get("prd") or {})
+                prd_proposal["verification"] = {
+                    "overall": "failed",
+                    "checks": [
+                        {
+                            "id": "code-todo-api-ui",
+                            "passed": False,
+                            "severity": "critical",
+                            "message": "ui payload mismatch",
+                        }
+                    ],
+                }
+                proposal_artifacts["prd"] = prd_proposal
+                db_run.proposal_artifacts = proposal_artifacts
+                db_run.phase_statuses = {**dict(db_run.phase_statuses), "prd": "approved"}
+                db_run.pending_approved_phase = "prd"
+                events = list(db_run.context_events or [])
+                events.append(
+                    {
+                        "event_type": "phase-approved",
+                        "run_id": run_id,
+                        "phase": "prd",
+                        "revision": prd_proposal.get("revision"),
+                        "approved_by": "session:test",
+                        "timestamp": "2026-04-19T00:00:00+00:00",
+                    }
+                )
+                db_run.context_events = events
+                db.add(db_run)
+                db.commit()
+            finally:
+                db.close()
+
+            blocked_advance = await client.post(f"/api/v1/runs/{run_id}/phases/advance")
+            assert blocked_advance.status_code == 409
+            detail = blocked_advance.json()["detail"]
+            assert detail["reason"] == "unresolved_verification_blocker"
+            assert detail["error_code"] == "phase_advancement_blocked"
+            assert detail["blocker"]["unresolved_critical_count"] == 1
+
+            run_response = await client.get(f"/api/v1/runs/{run_id}")
+            run_payload = run_response.json()
+            assert run_payload["current_phase"] is None
+            assert run_payload["current_phase_index"] == -1
+            assert run_payload["pending_approved_phase"] == "prd"
+            gate_events = [
+                event
+                for event in run_payload["context_events"]
+                if event.get("event_type") == "verification_gate_blocked"
+                and event.get("phase") == "prd"
+            ]
+            assert len(gate_events) == 1
+            assert gate_events[0].get("blocker", {}).get("unresolved_critical_count") == 1
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_phase_advancement_allows_after_verification_is_corrected(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            assert create_response.status_code == 200
+            run_id = create_response.json()["run"]["id"]
+            start_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+            assert start_response.status_code == 200
+
+            db = TestingSessionLocal()
+            try:
+                db_run = db.query(models.Run).filter(models.Run.id == run_id).first()
+                proposal_artifacts = (
+                    dict(db_run.proposal_artifacts)
+                    if isinstance(db_run.proposal_artifacts, dict)
+                    else {}
+                )
+                prd_proposal = dict(proposal_artifacts.get("prd") or {})
+                prd_proposal["verification"] = {
+                    "overall": "passed",
+                    "checks": [
+                        {
+                            "id": "code-todo-api-ui",
+                            "passed": True,
+                            "severity": "critical",
+                            "message": "aligned",
+                        }
+                    ],
+                }
+                proposal_artifacts["prd"] = prd_proposal
+                db_run.proposal_artifacts = proposal_artifacts
+                db_run.phase_statuses = {**dict(db_run.phase_statuses), "prd": "approved"}
+                db_run.pending_approved_phase = "prd"
+                events = list(db_run.context_events or [])
+                events.append(
+                    {
+                        "event_type": "phase-approved",
+                        "run_id": run_id,
+                        "phase": "prd",
+                        "revision": prd_proposal.get("revision"),
+                        "approved_by": "session:test",
+                        "timestamp": "2026-04-19T00:10:00+00:00",
+                    }
+                )
+                db_run.context_events = events
+                db.add(db_run)
+                db.commit()
+            finally:
+                db.close()
+
+            advance_response = await client.post(f"/api/v1/runs/{run_id}/phases/advance")
+            assert advance_response.status_code == 200
+            assert advance_response.json()["status"] == "transitioned"
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_phase_advancement_deduplicates_identical_blocked_events(monkeypatch):
     app.dependency_overrides[get_db] = override_get_db
     mocked_orchestration = AsyncMock()
@@ -2333,6 +2486,86 @@ def test_resume_approve_advances_when_phase_was_previously_approved(monkeypatch)
                 and event.get("next_phase") == "prd"
                 for event in events
             )
+
+    try:
+        anyio.run(exercise)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_resume_approve_is_blocked_by_unresolved_verification(monkeypatch):
+    app.dependency_overrides[get_db] = override_get_db
+    mocked_orchestration = AsyncMock()
+    monkeypatch.setattr(orchestration, "initiate_bmad_run", mocked_orchestration)
+
+    async def exercise():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            create_response = await client.post(
+                "/api/v1/runs/",
+                json={"api_specification": "Create users API with CRUD and required fields name and email"},
+            )
+            run_id = create_response.json()["run"]["id"]
+            start_response = await client.post(f"/api/v1/runs/{run_id}/phases/prd/start")
+            assert start_response.status_code == 200
+
+            db = TestingSessionLocal()
+            try:
+                db_run = db.query(models.Run).filter(models.Run.id == run_id).first()
+                proposal_artifacts = (
+                    dict(db_run.proposal_artifacts)
+                    if isinstance(db_run.proposal_artifacts, dict)
+                    else {}
+                )
+                prd_proposal = dict(proposal_artifacts.get("prd") or {})
+                prd_proposal["verification"] = {
+                    "overall": "failed",
+                    "checks": [
+                        {
+                            "id": "code-todo-api-ui",
+                            "passed": False,
+                            "severity": "critical",
+                            "message": "ui payload mismatch",
+                        }
+                    ],
+                }
+                proposal_artifacts["prd"] = prd_proposal
+                db_run.proposal_artifacts = proposal_artifacts
+                db_run.phase_statuses = {**dict(db_run.phase_statuses), "prd": "approved"}
+                db_run.pending_approved_phase = "prd"
+                db_run.status = "awaiting-approval"
+                events = list(db_run.context_events or [])
+                events.append(
+                    {
+                        "event_type": "phase-approved",
+                        "run_id": run_id,
+                        "phase": "prd",
+                        "revision": prd_proposal.get("revision"),
+                        "approved_by": "session:test",
+                        "timestamp": "2026-04-19T00:20:00+00:00",
+                    }
+                )
+                db_run.context_events = events
+                db.add(db_run)
+                db.commit()
+            finally:
+                db.close()
+
+            resume_response = await client.post(
+                f"/api/v1/runs/{run_id}/resume",
+                json={
+                    "decision_type": "approve",
+                    "source_checkpoint": "approval-complete",
+                    "decision_token": "token-approve-blocked",
+                },
+            )
+            assert resume_response.status_code == 409
+            assert resume_response.json()["detail"]["error_code"] == "unresolved_verification_blocker"
+
+            run_response = await client.get(f"/api/v1/runs/{run_id}")
+            run_payload = run_response.json()
+            assert run_payload["current_phase"] is None
+            assert run_payload["pending_approved_phase"] == "prd"
 
     try:
         anyio.run(exercise)
