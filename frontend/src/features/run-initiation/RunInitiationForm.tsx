@@ -118,6 +118,7 @@ const mergeRunSnapshot = (
 };
 
 const RunInitiationForm: React.FC = () => {
+  // Input-ready initial state: empty spec and no run context. This POC does not hydrate from localStorage/sessionStorage (FR31).
   const [apiSpec, setApiSpec] = useState<string>('');
   const [message, setMessage] = useState<string>('');
   const [error, setError] = useState<string>('');
@@ -307,7 +308,6 @@ const RunInitiationForm: React.FC = () => {
       setError('');
       const resetResult = await resetRunEnvironment();
       setApiSpec('');
-      setMessage('');
       setClarificationQuestions([]);
       setClarificationAnswers({});
       setIsAwaitingClarification(false);

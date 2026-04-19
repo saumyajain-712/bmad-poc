@@ -204,6 +204,100 @@ describe('RunInitiationForm correction apply controls', () => {
   });
 });
 
+describe('RunInitiationForm input-ready after reset (FR31)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+  });
+
+  it('after successful reset clears prior-run UI: empty spec, success copy, no timeline / Run complete / context panels', async () => {
+    vi.mocked(resetRunEnvironment).mockResolvedValue({
+      status: 'ok',
+      runs_deleted: 1,
+      runs_remaining: 0,
+    });
+    vi.mocked(createRun).mockResolvedValue({
+      run: buildRun({
+        status: 'phase-sequence-complete',
+        run_complete: true,
+        phase_statuses: {
+          prd: 'approved',
+          architecture: 'approved',
+          stories: 'approved',
+          code: 'approved',
+        },
+        verification_review: {
+          phase: 'code',
+          proposal_revision: 1,
+          verification: {
+            overall: 'passed',
+            pass_count: 8,
+            fail_count: 0,
+            failed_checks: [],
+          },
+          correction: { state: 'none', mismatch_id: null },
+          status: 'ready',
+          required_next_action: 'Ready for approval and phase progression.',
+          deterministic_signature: 'code|rev-1|ver-passed|corr-none|blocked-False',
+        },
+        final_output_review: {
+          phase: 'code',
+          proposal_revision: 1,
+          artifact_summary: {
+            title: 'CODE Proposal',
+            summary: 'Generated backend and frontend todo artifacts.',
+            backend_files: ['backend/main.py'],
+            frontend_files: ['frontend/src/features/todos/TodoApp.tsx'],
+            total_files: 2,
+          },
+          review_access: {
+            local_only: true,
+            backend_command: 'cd backend && uvicorn main:app --reload',
+            frontend_command: 'cd frontend && npm run dev',
+            frontend_url: 'http://localhost:3000',
+            api_base_url: 'http://localhost:8000/api/v1',
+          },
+          verification_overview: {
+            overall: 'passed',
+            blocked: false,
+            blocker: null,
+          },
+          deterministic_signature: 'code|rev-1|gen-run-99|files-2|blocked-False',
+        },
+        current_phase_proposal: undefined,
+      }),
+      validation: { is_complete: true, missing_items: [], clarification_questions: [] },
+    });
+
+    render(<RunInitiationForm />);
+
+    const specField = screen.getByPlaceholderText(/Enter free-text API specification/i) as HTMLTextAreaElement;
+    fireEvent.change(specField, { target: { value: 'Prior run API spec text' } });
+    fireEvent.click(screen.getByRole('button', { name: /Initiate BMAD Run/i }));
+
+    expect(await screen.findByRole('status', { name: 'Run complete' })).toBeInTheDocument();
+    expect(screen.getByTestId('run-timeline')).toBeInTheDocument();
+    expect(screen.getByText(/Original input context/i)).toBeInTheDocument();
+    expect(screen.getByText(/Phase statuses/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Reset environment/i }));
+
+    await waitFor(() => {
+      expect(resetRunEnvironment).toHaveBeenCalledTimes(1);
+    });
+
+    await waitFor(() => {
+      expect(specField.value).toBe('');
+    });
+    expect(screen.getByText(/Environment cleared \(0 runs stored\)/i)).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'Run complete' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('run-timeline')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Original input context/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Phase statuses/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Clarification questions/i)).not.toBeInTheDocument();
+  });
+});
+
 describe('RunInitiationForm reset environment (FR29)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
