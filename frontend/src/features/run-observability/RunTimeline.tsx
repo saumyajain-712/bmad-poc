@@ -10,6 +10,17 @@ interface RunTimelineProps {
 const formatEventDetail = (event: RunTimelineEvent): string => {
   if (event.event_type === TOOL_CALL_COMPLETED_EVENT_TYPE) {
     const name = event.tool_name || 'unknown_tool';
+    if (name === 'web_search') {
+      const input = typeof event.tool_input === 'object' && event.tool_input !== null
+        ? (event.tool_input as Record<string, unknown>)
+        : {};
+      const output = typeof event.tool_output === 'object' && event.tool_output !== null
+        ? (event.tool_output as Record<string, unknown>)
+        : {};
+      const querySummary = summarizeToolPayload(input.query ?? '');
+      const resultSummary = summarizeToolPayload(output.results ?? []);
+      return `Tool: web_search | query: ${querySummary} | results: ${resultSummary}`;
+    }
     const inSummary = summarizeToolPayload(event.tool_input);
     const outSummary = summarizeToolPayload(event.tool_output);
     return `Tool: ${name} | in: ${inSummary} | out: ${outSummary}`;

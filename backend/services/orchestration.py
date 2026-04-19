@@ -51,6 +51,40 @@ def append_simulated_tool_call_events_for_proposal(
             },
         }
     )
+    events.append(
+        {
+            "event_type": TOOL_CALL_COMPLETED_EVENT_TYPE,
+            "phase": phase,
+            "timestamp": timestamp,
+            "tool_name": "web_search",
+            "tool_input": {
+                "query": f"{phase} implementation run {run_id} revision {revision}",
+                "limit": 3,
+                "provider": "mock",
+            },
+            "tool_output": {
+                "results": [
+                    {
+                        "title": f"{phase.capitalize()} requirements overview",
+                        "url": f"https://mock.local/{phase}/requirements",
+                        "snippet": f"Simulated guidance for run {run_id}, revision {revision}.",
+                    },
+                    {
+                        "title": f"{phase.capitalize()} architecture notes",
+                        "url": f"https://mock.local/{phase}/architecture",
+                        "snippet": f"Deterministic context seed {run_id}-{revision}.",
+                    },
+                    {
+                        "title": f"{phase.capitalize()} testing checklist",
+                        "url": f"https://mock.local/{phase}/testing",
+                        "snippet": "Mock checklist generated without outbound network calls.",
+                    },
+                ],
+                "total": 3,
+                "source": "simulated",
+            },
+        }
+    )
 PHASE_STATUSES: tuple[str, ...] = (
     "pending",
     "in-progress",

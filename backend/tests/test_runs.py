@@ -465,15 +465,23 @@ def test_phase_proposal_persists_tool_call_events_before_proposal_generated(monk
             assert "proposal_generated" in types
             pg_idx = types.index("proposal_generated")
             tool_events = [e for e in events if isinstance(e, dict) and e.get("event_type") == "tool-call-completed"]
-            assert len(tool_events) == 2
+            assert len(tool_events) == 3
             tool_idxs = [i for i, e in enumerate(events) if isinstance(e, dict) and e.get("event_type") == "tool-call-completed"]
             assert all(i < pg_idx for i in tool_idxs)
             for e in tool_events:
                 assert e.get("phase") == "prd"
                 assert "timestamp" in e
-                assert e.get("tool_name") in ("search_files", "read_file")
+                assert e.get("tool_name") in ("search_files", "read_file", "web_search")
                 assert "tool_input" in e
                 assert "tool_output" in e
+            web_search_event = next(
+                e for e in tool_events if e.get("tool_name") == "web_search"
+            )
+            assert web_search_event["tool_input"]["provider"] == "mock"
+            assert "query" in web_search_event["tool_input"]
+            assert web_search_event["tool_output"]["source"] == "simulated"
+            assert web_search_event["tool_output"]["total"] == 3
+            assert len(web_search_event["tool_output"]["results"]) == 3
 
     try:
         anyio.run(exercise)

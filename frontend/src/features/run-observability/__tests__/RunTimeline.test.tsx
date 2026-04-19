@@ -92,6 +92,65 @@ describe('RunTimeline', () => {
     expect(row).toHaveTextContent('out:');
   });
 
+  it('renders web-search tool rows with query and result summaries', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: TOOL_CALL_COMPLETED_EVENT_TYPE,
+            phase: 'prd',
+            timestamp: '2026-04-17T16:00:06Z',
+            tool_name: 'web_search',
+            tool_input: { query: 'phase sequencing best practices', limit: 3, provider: 'mock' },
+            tool_output: {
+              results: [{ title: 'A' }, { title: 'B' }],
+              total: 2,
+              source: 'simulated',
+            },
+          },
+        ]}
+      />
+    );
+
+    const row = screen.getByRole('listitem');
+    expect(row).toHaveTextContent('Tool: web_search');
+    expect(row).toHaveTextContent('query:');
+    expect(row).toHaveTextContent('phase sequencing best practices');
+    expect(row).toHaveTextContent('results:');
+  });
+
+  it('shows full web-search payloads in expanded detail panel', () => {
+    render(
+      <RunTimeline
+        events={[
+          {
+            event_type: TOOL_CALL_COMPLETED_EVENT_TYPE,
+            phase: 'prd',
+            timestamp: '2026-04-17T16:00:07Z',
+            tool_name: 'web_search',
+            tool_input: { query: 'web search test query', limit: 3, provider: 'mock' },
+            tool_output: {
+              results: [
+                { title: 'Result 1', snippet: 'First snippet' },
+                { title: 'Result 2', snippet: 'Second snippet' },
+              ],
+              total: 2,
+              source: 'simulated',
+            },
+          },
+        ]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Details for/ }));
+    const inputPre = screen.getByTestId('tool-input-full');
+    expect(inputPre.textContent).toContain('web search test query');
+    expect(inputPre.textContent).toContain('"provider": "mock"');
+    const outputPre = screen.getByTestId('tool-output-full');
+    expect(outputPre.textContent).toContain('"source": "simulated"');
+    expect(outputPre.textContent).toContain('Result 1');
+  });
+
   it('redacts obvious secret-like substrings in tool payload summaries', () => {
     const dirty = '{"token":"Bearer abc123xyz","k":"sk-abcdefghijklmnopqrstuv"}';
     expect(redactSensitivePatterns(dirty)).toContain('[redacted]');
